@@ -111,7 +111,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     elseif(strcmp(method, 'eemd'))
         imf = eemd(data, noiseStd, 300, 5000)';
     elseif(strcmp(method, 'ceemdan'))
-        imf = ceemdan(data, noiseStd, 300, 5000)';
+        imf = ceemdan_par(data, noiseStd, 300, 5000)';
     elseif(strcmp(method, 'iceemdan'))
         imf = iceemdan(data, noiseStd, 300, 5000, 1)';
     end
