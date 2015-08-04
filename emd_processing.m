@@ -1,26 +1,43 @@
 function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ] = emd_processing( data, H, alpha, method, plots, noiseStd)
     %EMD_PROCESSING Process data using empirical mode decomposition
     %   Compute:
-    %       - empirical mode decomposition (IMFs) using given method (EMD, EEMD, CEEMDAN)
+    %       - empirical mode decomposition (IMFs) using given method (EMD, EEMD, CEEMDAN, ICEEMDAN)
     %       - detrended signal and trend-cyclical component using 4 criteria of trend index (energy, RZCN, statistical significance, low-frequency)
     %       - estimated periods of IMFs using zero-crossing method
     %       - filtered signal, that obtained after removing of statistically insignificant IMFs
     %
     %   Input:
-    %
+    %       data - time-series to processing (row is time)
+    %       H - assumed Hurst index of first noise IMF (for statistical significance test)
+    %       alpha - significance level, default is 0.05
+    %       method - method of decomposition: 'emd', 'eemd', 'ceemdan' or 'iceemdan'
+    %       plots - boolean flag (0 or 1) for graphics plot, default is 0
+    %       noiseStd - noise standard deviation, only for ensembles methods
+    %       
     %   Output:
+    %       ddata - detrended time-series
+    %       trend - trend-cyclic component
+    %       imf - IMFs of time-series (row is time, column is IMF)
+    %       period - IMFs mean periods (estimated using zero-crossing method)
+    %       trendidx - minimum index of IMF for trend-cylic component
+    %       residue - residue of decomposition (~0 for complete methods)
+    %       filtered - noise filtered time-series
+    %       filteredidx - indexes of IMFs that pass statistical significance test
     %
     %   Reference(s):
     %       Flandrin, P., Goncalves, P., Rilling, G., 2004. Detrending and denoising with empirical mode decomposition. EUSIPCO.
     %       Moghtader, A., Borgnat, P., Flandrin, P., 2011. Trend filtering: empirical mode decomposition versus l1 and Hodrick-Prescott. Advances in Adaptive Data Analysis 3 (1 and 2), 41–61.
     %       Colominas, M., Schlotthauer, G., Torres, M., Flandrin, P., 2012. Noise-assisted EMD methods in action. Advances in Adaptive Data Analysis 4 (4). 
     %       Afanasyev, D., Fedorova, E., Popov, V., 2014. Fine structure of the price-demand relationship in the electricity market: multi-scale correlation analysis. URL: http://mpra.ub.uni-muenchen.de/58827/.
+    %       Colominas, M., Schlotthauer, G., Torres, M., 2014. Improve complete ensemble EMD: A suitable tool for biomedical signal processing. Biomedical Signal Processing and Control, Vol. 14, 19-29
     %
     %   Copyright (c) 2014 by Dmitriy O. Afanasyev
     %   Versions:
     %       1.0 2014.04.22: initial version
-    %       1.1 2015.07.30: method renamed from 'deseasonalize_emd' to 'emd_processing'
+    %       1.1 2015.07.30: method renamed to 'emd_processing'
+    %       1.2 2015.08.04: added improved CEEMDAN (ICEEMDAN)
     %
+    %   TODO: explicit estimation of H-index for first noise IMF
     
     if (nargin < 2)
         H = 0.5;
@@ -40,7 +57,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     
     alphaErr = 'Use only alpha equal 0.05 or 0.01';
     hErr = 'Use only H equal 0.2, 0.5 or 0.8';
-    methodErr = 'Use only method "emd", "eemd" or "ceemdan"';
+    methodErr = 'Use only method "emd", "eemd", "ceemdan" or "iceemdan"';
     
     % see Flandrin et al., 2004
     if (H == 0.2)
@@ -74,7 +91,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
         error(hErr);
     end
     
-    if(~strcmp(method, 'emd') && ~strcmp(method, 'eemd') && ~strcmp(method, 'ceemdan'))
+    if(~strcmp(method, 'emd') && ~strcmp(method, 'eemd') && ~strcmp(method, 'ceemdan') && ~strcmp(method, 'iceemdan'))
         error(methodErr);
     end
     
@@ -85,16 +102,18 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
          rzcntr = 3.5317; rzcntl = 1.5073;
     end
     
+    % see Flandrin et al., 2004
     po = 2.01 + 0.2*(H-0.5) + 0.12*(H-0.5)^2;
     
-    % decompose by IMFs
+    % decomposition into IMFs
     if(strcmp(method, 'emd'))
         imf = emd(data, 'MAXMODES', 100, 'MAXITERATIONS', 5000)';
     elseif(strcmp(method, 'eemd'))
         imf = eemd(data, noiseStd, 300, 5000)';
     elseif(strcmp(method, 'ceemdan'))
-        % see description of CEEMDAN in Colominas et al., 2012
         imf = ceemdan_par(data, noiseStd, 300, 5000)';
+    elseif(strcmp(method, 'iceemdan'))
+        imf = iceemdan(data, noiseStd, 300, 5000, 1)';
     end
     
     nImf = size(imf, 2);
@@ -113,7 +132,8 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     % significance criteria in Flandrin et al., 2004 and low-frequency
     % criteria in Afanasyev et al., 2014
     for i=1:nImf
-        [indmin, indmax, indzer] = extr(imf(:, i)');
+        [period(i, 1), ~, ~, indzer] = period_zero_cross(imf(:, i)');
+        %[indmin, indmax, indzer] = extr(imf(:, i)');
         numzercur = size(indzer, 2);
         
         if(i == 1)
@@ -130,12 +150,12 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
         means(i, 1) = mean(sum(imf(:, 1:i), 2))/dataMean;
         energy(i, 1) = sum(imf(:, i).^2, 1)/nObs;
         confidence(i, 1) = 2^(log2(noise(i, 1)) + 2^(a*i + b));
-        period(i, 1) = 4 * (nObs / (size(indmin, 2) + size(indmax, 2) + numzercur));
+        %period(i, 1) = 4 * (nObs / (size(indmin, 2) + size(indmax, 2) + numzercur));
         numzerlast = numzercur;
     end
     
     trendidx = 0;
-    filteredidx = [];
+    filteredidx = zeros(1, nImf);
     filtered = zeros(nObs, 1);
     
     for i=nImf:-1:1
@@ -144,18 +164,21 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
         end
         
         if(energy(i, 1) >= confidence(i, 1))
-            filteredidx(1, end+1) = i;
+            filteredidx(1, i) = i;
             filtered = filtered + imf(:, i);
         end
     end
     
-    % calculate trend, long-term season component & deseasonalized data
+    % indexes of statistical significant IMFs
+    filteredidx = nonzeros(filteredidx)';
+    
+    % filtered data, trend-cyclical component and detrended data
     residue = data - sum(imf(:, 1:nImf), 2);
     filtered = filtered + residue;
     trend = sum(imf(:, trendidx:nImf), 2) + residue;
     ddata = data - trend;
     
-    % align min values of the raw and deseasonalized data
+    % align min values of the raw and detrended data
     ddata = ddata + min(data) - min(ddata);
     
     if (plots)
@@ -210,9 +233,4 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
         xlim([1 nObs]);
         legend('Data', 'Trend');
     end
-    
-    if (nargin == 6)
-        save(savePath);
-    end
-    
 end

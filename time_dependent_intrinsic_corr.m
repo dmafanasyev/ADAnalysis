@@ -6,12 +6,18 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
     %   (2) time-dependent local correlation with fixed sliding window (TDLC), mean (optionaly - bootstraped median) of TDLC (see Papadimitriou et al., 2006),
     %   (3) time-dependent intrinsic correlation (TDIC), mean (optionaly - bootstraped median) of TDIC and instantaneous characteristics, using Hilbert transformation (see Chen et al., 2010; Afanasyev et al., 2014).
     %   
+    %   NOTE: Unlike Chen et al. (2010) here used Hilbert transformation for
+    %   instantaneous periods calculation instead general zero crossing
+    %   method. TDIC calculated only for minimum instantaneous period, not
+    %   for range from minimumu to maximum period (= half of time-series
+    %   length).
+    %   
     %   Input:
     %       data1, data2 - IMFs matrixes
     %       bootstrap - boolean flag (0 or 1) for bootstraping of TDIC median, default is 0 - simple mean
     %       plots - boolean flag (0 or 1) for graphics plot, default is 0
     %       periodn - number of instantaneous periods for including to sliding window, default is 1
-    %       alpha - confidence level, default is 0.05 (5%)
+    %       alpha - significance level, default is 0.05
     %
     %   Output:
     %       tdc - time-dependent intrinsic correlation (TDIC):
@@ -45,6 +51,14 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
     if (nargin < 2)
         error('Two IMFs matrix must be specified');
     end
+    if(size(data1, 1) ~= size(data2, 1))
+        error('The length of both IMFs matrix must be the equal');
+    end;
+    
+    if(size(data1, 2) ~= size(data2, 2))
+        error('The number of columns at IMFs matrix must be the equal');
+    end;
+    
     if (nargin < 3)
         bootstrap = 0;
     end
@@ -56,18 +70,6 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
     end
     if (nargin < 6)
         alpha = 0.05;
-    end
-    
-    if(size(data1, 1) ~= size(data2, 1))
-        error('The length of both IMFs matrix must be the equal');
-    end;
-    
-    if(size(data1, 2) ~= size(data2, 2))
-        error('The number of columns at IMFs matrix must be the equal');
-    end;
-    
-    if(bootstrap > 0)
-        bootnum = 10000;
     end
     
     [nObs, nCols] = size(data1);
@@ -108,55 +110,24 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
         tic.lo(j, 1) = rlo(1,2);
         tic.up(j, 1) = rup(1,2);
         
-        halfWinSizeMean = round(periodn*max(period_zero_cross(data1(:,j)), period_zero_cross(data2(:,j)))/2);
+        halfWinSizeMean = periodn*round(max(period_zero_cross(data1(:,j)), period_zero_cross(data2(:,j)))/2);
         
         % time dependent intrinsic correlation
         for t = 1:nObs
             tlc = pearson_window_corr_int(tlc, data1, data2, t, j, nObs, halfWinSizeMean, alpha);
             
-            halfWinSize = round(periodn*max(instant.d1.period(t, j), instant.d2.period(t, j))/2);
+            halfWinSize = periodn*round(max(instant.d1.period(t, j), instant.d2.period(t, j))/2);
             tdc = pearson_window_corr_int(tdc, data1, data2, t, j, nObs, halfWinSize, alpha);
         end
         
-        tlc = mean_corr_int(tlc, j, bootstrap, bootnum, alpha);
-        tdc = mean_corr_int(tdc, j, bootstrap, bootnum, alpha);
+        tlc = mean_corr_int(tlc, j, bootstrap, alpha);
+        tdc = mean_corr_int(tdc, j, bootstrap, alpha);
     end
     
     if(plots>0)
         plot_corr_dynamic_int(tlc, nCols,  nObs, 'Time-dependent local correlations');
         plot_corr_dynamic_int(tdc, nCols,  nObs, 'Time-dependent intrinsic correlations');
-                
-        x = 1:nCols;
-        
-        figure;
-        subplot(3,1,1);
-        hold on;
-        grid on;
-        box on;
-        errorbar(x, tic.corr, tic.corr-tic.lo, tic.up-tic.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
-        xlim([0 nCols+1]);
-        ylim([-1 1]);
-        title('Time-independent correlations');
-        hold off;
-        
-        subplot(3,1,2);
-        hold on;
-        grid on;
-        errorbar(x, tlc.mean.corr, tlc.mean.corr-tlc.mean.lo, tlc.mean.up-tlc.mean.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
-        xlim([0 nCols+1]);
-        ylim([-1 1]);
-        title('Median of the time-dependent local correlations');
-        hold off;
-        
-        subplot(3,1,3);
-        hold on;
-        grid on;
-        errorbar(x, tdc.mean.corr, tdc.mean.corr-tdc.mean.lo, tdc.mean.up-tdc.mean.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
-        xlim([0 nCols+1]);
-        ylim([-1 1]);
-        title('Median of the time-dependent intrinsic correlations');
-        hold off;
-        
+        plot_corr_mean_int( tic,tlc, tdc, nCols);
     end
 end
 
@@ -189,10 +160,11 @@ function [ corr_obj ] = pearson_window_corr_int( corr_obj, data1, data2, t, j, n
     end
 end
 
-function [ corr_obj ] = mean_corr_int( corr_obj, j, bootstrap, bootnum, alpha )
+function [ corr_obj ] = mean_corr_int( corr_obj, j, bootstrap,alpha )
     % Calculate mean/median value of time-dependent Pearson correlation
     if(bootstrap > 0)
         % bootstrap median, CI and p-value of t-test
+        bootnum = 10000;
         bootstat = bootstrp(bootnum, @median, corr_obj.corr(:, j));
         ci = bootci(bootnum, {@median, corr_obj.corr(:, j)}, 'alpha', alpha);
 
@@ -203,18 +175,18 @@ function [ corr_obj ] = mean_corr_int( corr_obj, j, bootstrap, bootnum, alpha )
     else
         % simple mean, CI and p-value of t-test
         corr_obj.mean.corr(j, 1) = mean(corr_obj.corr(:, j));
-        [~, tdr.mean.R2p(1,j), ci] = ttest(corr_obj.lo(:, j), 0, 'alpha', alpha);
-        corr_obj.mean.up(j, 1) = ci(1);
-        corr_obj.mean.prob(j, 1) = ci(2);
+        [~, tdr.mean.prob(1,j), ci] = ttest(corr_obj.corr(:, j), 0, 'alpha', alpha);
+        corr_obj.mean.lo(j, 1) = ci(1);
+        corr_obj.mean.up(j, 1) = ci(2);
     end
 end
 
-function [] = plot_corr_dynamic_int( tdc, nCols,  nObs, title_str )
+function [] = plot_corr_dynamic_int( corr_obj, nCols,  nObs, title_str )
     % Plot graph of time-dependent Pearson correlation
     figure;
     for i=1:nCols;
         subplot(nCols, 1, i);
-        plot(tdc.corr(:, i));
+        plot(corr_obj.corr(:, i));
         
         if (i == 1)
             title(title_str);
@@ -227,4 +199,38 @@ function [] = plot_corr_dynamic_int( tdc, nCols,  nObs, title_str )
             set(gca, 'xticklabel', '');
         end
     end
+end
+
+function [] = plot_corr_mean_int( tic,tlc, tdc, nCols)
+    % Plot mean values of 3 types of time-dependent Pearson correlation
+    x = 1:nCols;
+
+    figure;
+    subplot(3,1,1);
+    hold on;
+    grid on;
+    box on;
+    errorbar(x, tic.corr, tic.corr-tic.lo, tic.up-tic.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
+    xlim([0 nCols+1]);
+    ylim([-1 1]);
+    title('Time-independent correlations');
+    hold off;
+
+    subplot(3,1,2);
+    hold on;
+    grid on;
+    errorbar(x, tlc.mean.corr, tlc.mean.corr-tlc.mean.lo, tlc.mean.up-tlc.mean.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
+    xlim([0 nCols+1]);
+    ylim([-1 1]);
+    title('Mean of the time-dependent local correlations');
+    hold off;
+
+    subplot(3,1,3);
+    hold on;
+    grid on;
+    errorbar(x, tdc.mean.corr, tdc.mean.corr-tdc.mean.lo, tdc.mean.up-tdc.mean.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
+    xlim([0 nCols+1]);
+    ylim([-1 1]);
+    title('Mean of the time-dependent intrinsic correlations');
+    hold off;
 end
