@@ -8,7 +8,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     %
     %   Input:
     %       data - time-series to processing (row is time)
-    %       H - assumed Hurst index of first noise IMF (for statistical significance test)
+    %       H - assumed Hurst index of first noise IMF (for statistical significance test); only values 0.2, 0.5 and 0.8 supported
     %       alpha - significance level, default is 0.05
     %       method - method of decomposition: 'emd', 'eemd', 'ceemdan' or 'iceemdan'
     %       plots - boolean flag (0 or 1) for graphics plot, default is 0
@@ -111,7 +111,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     elseif(strcmp(method, 'eemd'))
         imf = eemd(data, noiseStd, 300, 5000)';
     elseif(strcmp(method, 'ceemdan'))
-        imf = ceemdan_par(data, noiseStd, 300, 5000)';
+        imf = ceemdan(data, noiseStd, 300, 5000)';
     elseif(strcmp(method, 'iceemdan'))
         imf = iceemdan(data, noiseStd, 300, 5000, 1)';
     end
@@ -132,7 +132,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     % significance criteria in Flandrin et al., 2004 and low-frequency
     % criteria in Afanasyev et al., 2014
     for i=1:nImf
-        [period(i, 1), ~, ~, indzer] = period_zero_cross(imf(:, i)');
+        [period(i, 1), ~, ~, indzer] = period_zero_cross(imf(:, i));
         %[indmin, indmax, indzer] = extr(imf(:, i)');
         numzercur = size(indzer, 2);
         
