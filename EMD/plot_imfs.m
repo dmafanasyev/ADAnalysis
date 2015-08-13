@@ -17,7 +17,6 @@ function [ h ] = plot_imfs( imfs, residue )
 
 figure;
 for i=1:nImf;
-    if()
     subplot(nImf, 1, i);
     
     if (i == 1)

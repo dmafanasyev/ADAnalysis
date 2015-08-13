@@ -1,7 +1,7 @@
-function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ] = emd_processing( data, H, alpha, method, plots, noiseStd)
-    %EMD_PROCESSING Process data using empirical mode decomposition
+function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ] = emd_processing( data, H, alpha, method, plots, noiseStd, numR, SNRFlag)
+    %EMD_PROCESSING Process data using empirical mode decomposition (spline interpolation)
     %   Compute:
-    %       - empirical mode decomposition (IMFs) using given method (EMD, EEMD, CEEMDAN, ICEEMDAN)
+    %       - empirical mode decomposition (IMFs) using given method (EMD, EEMD, CEEMDAN, iCEEMDAN)
     %       - detrended signal and trend-cyclical component using 4 criteria of trend index (energy, RZCN, statistical significance, low-frequency)
     %       - estimated periods of IMFs using zero-crossing method
     %       - filtered signal, that obtained after removing of statistically insignificant IMFs
@@ -13,6 +13,8 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     %       method - method of decomposition: 'emd', 'eemd', 'ceemdan' or 'iceemdan'
     %       plots - boolean flag (0 or 1) for graphics plot, default is 0
     %       noiseStd - noise standard deviation, only for ensembles methods
+    %       numR - noise ensemble size for EEMD/CEEMDAN/iCEEMDAN
+    %       SNRFlag - noise amplitude strategy (only for iCEEMDAN): 1 - SNR increases for every stage, 2 - SNR is constant.
     %       
     %   Output:
     %       ddata - detrended time-series
@@ -24,20 +26,30 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     %       filtered - noise filtered time-series
     %       filteredidx - indexes of IMFs that pass statistical significance test
     %
-    %   Reference(s):
+    %   References:
     %       Flandrin, P., Goncalves, P., Rilling, G., 2004. Detrending and denoising with empirical mode decomposition. EUSIPCO.
     %       Moghtader, A., Borgnat, P., Flandrin, P., 2011. Trend filtering: empirical mode decomposition versus l1 and Hodrick-Prescott. Advances in Adaptive Data Analysis 3 (1 and 2), 41–61.
     %       Colominas, M., Schlotthauer, G., Torres, M., Flandrin, P., 2012. Noise-assisted EMD methods in action. Advances in Adaptive Data Analysis 4 (4). 
-    %       Afanasyev, D., Fedorova, E., Popov, V., 2014. Fine structure of the price-demand relationship in the electricity market: multi-scale correlation analysis. URL: http://mpra.ub.uni-muenchen.de/58827/.
+    %       Afanasyev, D., Fedorova, E., Popov, V., 2015. Fine structure of the price-demand relationship in the electricity market: multi-scale correlation analysis. Energy Economics 51, 215-226.
     %       Colominas, M., Schlotthauer, G., Torres, M., 2014. Improve complete ensemble EMD: A suitable tool for biomedical signal processing. Biomedical Signal Processing and Control, Vol. 14, 19-29
     %
     %   Copyright (c) 2014 by Dmitriy O. Afanasyev
     %   Versions:
-    %       1.0 2014.04.22: initial version
-    %       1.1 2015.07.30: method renamed to 'emd_processing'
-    %       1.2 2015.08.04: added improved CEEMDAN (ICEEMDAN)
+    %       1.0     2014.04.22: initial version
+    %       1.1     2015.07.30: method renamed to 'emd_processing'
+    %       1.2     2015.08.04: added improved CEEMDAN (ICEEMDAN)
+    %       1.21   2015.08.13: added 2 optional params 'numR' and 'SNRFlag'; set optimal value of noise ensemble size as default for numR.
     %
     %   TODO: explicit estimation of H-index for first noise IMF
+    
+    dataErr = 'Input data must be non empty vector';
+    alphaErr = 'Use only alpha equal 0.05 or 0.01';
+    hErr = 'Use only H equal 0.2, 0.5 or 0.8';
+    methodErr = 'Use only method "emd", "eemd", "ceemdan" or "iceemdan"';
+    
+    if(nargin == 0 || ~isvector(data))
+        error(dataErr);
+    end
     
     if (nargin < 2)
         H = 0.5;
@@ -46,7 +58,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
         alpha = 0.05;
     end
     if (nargin < 4)
-        method = 'ceemdan';
+        method = 'iceemdan';
     end
     if (nargin < 5)
         plots = 0;
@@ -54,10 +66,16 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     if (nargin < 6)
         noiseStd = 0.2;
     end
-    
-    alphaErr = 'Use only alpha equal 0.05 or 0.01';
-    hErr = 'Use only H equal 0.2, 0.5 or 0.8';
-    methodErr = 'Use only method "emd", "eemd", "ceemdan" or "iceemdan"';
+    if (nargin < 8)
+        SNRFlag = 2;
+    end
+    if (nargin < 7)
+        % the optimal value for mean range (from the run to run) and computional time minimization
+        numR = 1000;
+        if(strcmp(method, 'iceemdan') && SNRFlag == 1)
+            numR = 3000;
+        end
+    end
     
     % see Flandrin et al., 2004
     if (H == 0.2)
@@ -95,6 +113,10 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
         error(methodErr);
     end
     
+    if size(data,2) > 1
+        data = data.';
+    end
+    
     % see Table 1 in Moghtader et al., 2011 for spline interpolation
     if(alpha == 0.05)
          rzcntr = 2.7030; rzcntl = 1.7232;
@@ -107,13 +129,13 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     
     % decomposition into IMFs
     if(strcmp(method, 'emd'))
-        imf = emd(data, 'MAXMODES', 100, 'MAXITERATIONS', 5000)';
+        imf = emd(data, 'MAXITERATIONS', Inf)';
     elseif(strcmp(method, 'eemd'))
-        imf = eemd(data, noiseStd, 300, 5000)';
+        imf = eemd(data, noiseStd, numR, Inf)';
     elseif(strcmp(method, 'ceemdan'))
-        imf = ceemdan_par(data, noiseStd, 300, 5000)';
+        imf = ceemdan(data, noiseStd, numR, Inf)';
     elseif(strcmp(method, 'iceemdan'))
-        imf = iceemdan(data, noiseStd, 300, 5000, 1)';
+        imf = iceemdan(data, noiseStd, 15, Inf, SNRFlag)';
     end
     
     nImf = size(imf, 2);

@@ -37,9 +37,9 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
     %               instant.d<N>.omega - instantaneous frequency
     %               instant.d<N>.period - instantaneous period
     %
-    %   Reference(s):
+    %   References:
     %       Chen, N., Wu, Z., Huang, N., 2010. The time-dependent intrinsic correlation based on the empirical mode decomposition. Advances in Adaptive Data Analysis 2 (2), 223–265.
-    %       Afanasyev, D., Fedorova, E., Popov, V., 2014. Fine structure of the price-demand relationship in the electricity market: multi-scale correlation analysis. URL: http://mpra.ub.uni-muenchen.de/58827/.
+    %       Afanasyev, D., Fedorova, E., Popov, V., 2015. Fine structure of the price-demand relationship in the electricity market: multi-scale correlation analysis. Energy Economics 51, 215-226.
     %       Papadimitriou, S., Sun, J., Yu, P., 2006. Local correlation tracking in time series. ICDM, 456–465.
     %
     %   Copyright (c) 2014-2015 by Dmitriy O. Afanasyev
