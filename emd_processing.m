@@ -133,9 +133,9 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     elseif(strcmp(method, 'eemd'))
         imf = eemd(data, noiseStd, numR, Inf)';
     elseif(strcmp(method, 'ceemdan'))
-        imf = ceemdan(data, noiseStd, numR, Inf)';
+        imf = ceemdan_par(data, noiseStd, numR, Inf)';
     elseif(strcmp(method, 'iceemdan'))
-        imf = iceemdan(data, noiseStd, 15, Inf, SNRFlag)';
+        imf = iceemdan(data, noiseStd, numR, Inf, SNRFlag)';
     end
     
     nImf = size(imf, 2);
@@ -152,10 +152,9 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     
     % see energy and RZCN criterias in Moghtader et al., 2011, statistical
     % significance criteria in Flandrin et al., 2004 and low-frequency
-    % criteria in Afanasyev et al., 2014
+    % criteria in Afanasyev et al., 2015
     for i=1:nImf
         [period(i, 1), ~, ~, indzer] = period_zero_cross(imf(:, i));
-        %[indmin, indmax, indzer] = extr(imf(:, i)');
         numzercur = size(indzer, 2);
         
         if(i == 1)
@@ -172,7 +171,6 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
         means(i, 1) = mean(sum(imf(:, 1:i), 2))/dataMean;
         energy(i, 1) = sum(imf(:, i).^2, 1)/nObs;
         confidence(i, 1) = 2^(log2(noise(i, 1)) + 2^(a*i + b));
-        %period(i, 1) = 4 * (nObs / (size(indmin, 2) + size(indmax, 2) + numzercur));
         numzerlast = numzercur;
     end
     
