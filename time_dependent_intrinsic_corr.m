@@ -4,19 +4,18 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
     %   For the multi-scale correlation analysis purpose are calculated next types of the IMFs pairs correlations:
     %   (1) simple liner Pearson correlation,
     %   (2) time-dependent local correlation with fixed sliding window (TDLC), mean (optionaly - bootstraped median) of TDLC (see Papadimitriou et al., 2006),
-    %   (3) time-dependent intrinsic correlation (TDIC), mean (optionaly - bootstraped median) of TDIC and instantaneous characteristics, using Hilbert transformation (see Chen et al., 2010; Afanasyev et al., 2014).
+    %   (3) time-dependent intrinsic correlation (TDIC), mean (optionaly - bootstraped median) of TDIC and instantaneous characteristics, using Hilbert transformation (see Chen et al., 2010; Afanasyev et al., 2015).
     %   
     %   NOTE: Unlike Chen et al. (2010) here used Hilbert transformation for
     %   instantaneous periods calculation instead general zero crossing
-    %   method. TDIC calculated only for minimum instantaneous period, not
-    %   for range from minimumu to maximum period (= half of time-series
-    %   length).
+    %   method. TDIC calculated only for one instantaneous period number (see periodn input parameter),
+    %   not for range from minimumu to maximum period (= half of time-series length).
     %   
     %   Input:
     %       data1, data2 - IMFs matrixes
     %       bootstrap - boolean flag (0 or 1) for bootstraping of TDIC median, default is 0 - simple mean
     %       plots - boolean flag (0 or 1) for graphics plot, default is 0
-    %       periodn - number of instantaneous periods for including to sliding window, default is 1
+    %       periodn - number of instantaneous periods for including into sliding window, default is 1
     %       alpha - significance level, default is 0.05
     %
     %   Output:
@@ -36,16 +35,23 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
     %               instant.d<N>.phase - instantaneous phase
     %               instant.d<N>.omega - instantaneous frequency
     %               instant.d<N>.period - instantaneous period
-    %
+    %	
+    %   This function is partial Octave compatible (except bootstrap support).
+    %   It requires next packages to be installed (they will be loaded automaticaly in the properly order):
+    %       nan (http://octave.sourceforge.net/nan/index.html)
+    %       statistics (http://octave.sourceforge.net/statistics/)
+    %       signal (http://octave.sourceforge.net/signal/)
+    %	
     %   References:
-    %       Chen, N., Wu, Z., Huang, N., 2010. The time-dependent intrinsic correlation based on the empirical mode decomposition. Advances in Adaptive Data Analysis 2 (2), 223–265.
+    %       Chen, N., Wu, Z., Huang, N., 2010. The time-dependent intrinsic correlation based on the empirical mode decomposition. Advances in Adaptive Data Analysis 2 (2), 223-265.
     %       Afanasyev, D., Fedorova, E., Popov, V., 2015. Fine structure of the price-demand relationship in the electricity market: multi-scale correlation analysis. Energy Economics 51, 215-226.
-    %       Papadimitriou, S., Sun, J., Yu, P., 2006. Local correlation tracking in time series. ICDM, 456–465.
+    %       Papadimitriou, S., Sun, J., Yu, P., 2006. Local correlation tracking in time series. ICDM, 456-465.
     %
     %   Copyright (c) 2014-2015 by Dmitriy O. Afanasyev
     %   Versions:
-    %       1.0 2014.04.05: initial version
-    %       1.1 2015.04.13: added time-dependent local correlation, refactor internal routines
+    %       1.0  2014.04.05: initial version
+    %       1.1  2015.04.13: added time-dependent local correlation, refactor internal routines
+    %       1.11 2015.12.25: added compatibility with Octave environment
     %   
     
     if (nargin < 2)
@@ -70,6 +76,27 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
     end
     if (nargin < 6)
         alpha = 0.05;
+    end
+    
+    if(periodn <= 0 || fix(periodn) ~= periodn)
+        periodn = 1;
+        warning('Number of instantaneous periods for including into sliding window must be positive integer number. Set it to default value 1.');
+    end
+    
+    if(is_run_octave())
+        % unload required packages first to provide the properly loading order then
+        pkg unload nan;
+        pkg unload statistics;
+        pkg unload signal;
+        
+        pkg load nan;
+        pkg load statistics;
+        pkg load signal;
+        
+        if(bootstrap == 1)
+          warning('Bootstrap is not supported under Octave environment now. Switching to simple mean mode...');
+          bootstrap = 0;
+        end
     end
     
     [nObs, nCols] = size(data1);
@@ -103,81 +130,97 @@ function [ tdc, tlc, tic, instant] = time_dependent_intrinsic_corr( data1, data2
     tdc.mean.up = nan(nCols, 1);
     
     for j = 1:nCols
-        % time independent correlation
-        [r, p, rlo, rup] = corrcoef(data1(:,j), data2(:,j), 'alpha', alpha);
-        tic.corr(j, 1) = r(1,2);
-        tic.prob(j, 1) = p(1,2);
-        tic.lo(j, 1) = rlo(1,2);
-        tic.up(j, 1) = rup(1,2);
-        
-        halfWinSizeMean = periodn*round(max(period_zero_cross(data1(:,j)), period_zero_cross(data2(:,j)))/2);
-        
-        % time dependent intrinsic correlation
-        for t = 1:nObs
-            tlc = pearson_window_corr_int(tlc, data1, data2, t, j, nObs, halfWinSizeMean, alpha);
-            
-            halfWinSize = periodn*round(max(instant.d1.period(t, j), instant.d2.period(t, j))/2);
-            tdc = pearson_window_corr_int(tdc, data1, data2, t, j, nObs, halfWinSize, alpha);
-        end
-        
-        tlc = mean_corr_int(tlc, j, bootstrap, alpha);
-        tdc = mean_corr_int(tdc, j, bootstrap, alpha);
+      % time independent correlation
+      tic = pearson_full_corr_int( tic, data1, data2, j, alpha );
+      
+      halfWinSizeMean = periodn*round(max(period_zero_cross(data1(:,j)), period_zero_cross(data2(:,j)))/2);
+      
+      % time dependent local and intrinsic correlation
+      for t = 1:nObs
+          tlc = pearson_window_corr_int(tlc, data1, data2, t, j, nObs, halfWinSizeMean, alpha);
+          
+          halfWinSize = periodn*round(max(instant.d1.period(t, j), instant.d2.period(t, j))/2);
+          tdc = pearson_window_corr_int(tdc, data1, data2, t, j, nObs, halfWinSize, alpha);
+      end
+      
+      tlc = mean_corr_int(tlc, j, bootstrap, alpha);
+      tdc = mean_corr_int(tdc, j, bootstrap, alpha);
     end
     
     if(plots>0)
-        plot_corr_dynamic_int(tlc, nCols,  nObs, 'Time-dependent local correlations');
-        plot_corr_dynamic_int(tdc, nCols,  nObs, 'Time-dependent intrinsic correlations');
-        plot_corr_mean_int( tic,tlc, tdc, nCols);
+      plot_corr_dynamic_int(tlc, nCols,  nObs, 'Time-dependent local correlations');
+      plot_corr_dynamic_int(tdc, nCols,  nObs, 'Time-dependent intrinsic correlations');
+      plot_corr_mean_int( tic,tlc, tdc, nCols);
     end
 end
 
 %%%%% Internal routines %%%%%
+function [ r, p, rlo, rup ] = pearson_corr_int( x, y, alpha )
+    % Calculate Pearson correlation
+    if(is_run_octave())
+        [r, p, rlo, rup] = corrcoef([x y], 'Mode', 'Pearson', 'alpha', alpha);
+    else
+        [r, p, rlo, rup] = corrcoef(x, y, 'alpha', alpha);
+    end
+    
+    r = r(1,2);
+    p = p(1,2);
+    rlo = rlo(1,2);
+    rup = rup(1,2);
+  end
+
+function [ corr_obj ] = pearson_full_corr_int( corr_obj, data1, data2, j, alpha )
+    % Calculate Pearson correlation for full sample
+    [corr_obj.corr(j), corr_obj.prob(j), corr_obj.lo(j), corr_obj.up(j)] = pearson_corr_int(data1(:, j), data2(:, j), alpha);
+
+    if(isnan(corr_obj.lo(j)))
+        corr_obj.lo(j) = corr_obj.corr(j);
+    end
+    if(isnan(corr_obj.up(j)))
+      corr_obj.up(j) = corr_obj.corr(j);
+    end
+end
+
 function [ corr_obj ] = pearson_window_corr_int( corr_obj, data1, data2, t, j, nObs, halfWinSize, alpha )
     % Calculate Pearson correlation for given window
     ts = t - halfWinSize;
-    if(ts<1)
+    if(ts < 1)
         ts = 1;
     end
 
     te = t + halfWinSize;
-    if(te>nObs)
+    if(te > nObs)
         te = nObs;
     end
+	
+    [corr_obj.corr(t, j), corr_obj.prob(t, j), corr_obj.lo(t, j), corr_obj.up(t, j)] = pearson_corr_int(data1(ts:te, j), data2(ts:te, j), alpha);
 
-    [r, p, rlo, rup] = corrcoef(data1(ts:te, j), data2(ts:te, j), 'alpha', alpha);
-
-    corr_obj.corr(t, j) = r(1,2);
-    corr_obj.prob(t, j) = p(1,2);
-    if(isnan(rlo(1,2)))
-        corr_obj.lo(t, j) = r(1,2);
-    else
-        corr_obj.lo(t, j) = rlo(1,2);
+    if(isnan(corr_obj.lo(t, j)))
+        corr_obj.lo(t, j) = corr_obj.corr(t, j);
     end
-    if(isnan(rup(1,2)))
-        corr_obj.up(t, j) = r(1,2);
-    else
-        corr_obj.up(t, j) = rup(1,2);
+    if(isnan(corr_obj.up(t, j)))
+		  corr_obj.up(t, j) = corr_obj.corr(t, j);
     end
 end
 
-function [ corr_obj ] = mean_corr_int( corr_obj, j, bootstrap,alpha )
+function [ corr_obj ] = mean_corr_int( corr_obj, j, bootstrap, alpha )
     % Calculate mean/median value of time-dependent Pearson correlation
     if(bootstrap > 0)
-        % bootstrap median, CI and p-value of t-test
-        bootnum = 10000;
-        bootstat = bootstrp(bootnum, @median, corr_obj.corr(:, j));
-        ci = bootci(bootnum, {@median, corr_obj.corr(:, j)}, 'alpha', alpha);
+      % bootstrap median, CI and p-value of t-test
+      bootnum = 10000;
+      bootstat = bootstrp(bootnum, @median, corr_obj.corr(:, j));
+      ci = bootci(bootnum, {@median, corr_obj.corr(:, j)}, 'alpha', alpha);
 
-        corr_obj.mean.corr(j, 1) = mean(bootstat);
-        corr_obj.mean.lo(j, 1) = ci(1,1);
-        corr_obj.mean.up(j, 1) = ci(2,1);
-        [~, corr_obj.mean.prob(j, 1)] = ttest(bootstat, 0, 'alpha', alpha);
+      corr_obj.mean.corr(j, 1) = mean(bootstat);
+      corr_obj.mean.lo(j, 1) = ci(1,1);
+      corr_obj.mean.up(j, 1) = ci(2,1);
+      [~, corr_obj.mean.prob(j, 1)] = ttest(bootstat, 0, 'alpha', alpha);
     else
-        % simple mean, CI and p-value of t-test
-        corr_obj.mean.corr(j, 1) = mean(corr_obj.corr(:, j));
-        [~, tdr.mean.prob(1,j), ci] = ttest(corr_obj.corr(:, j), 0, 'alpha', alpha);
-        corr_obj.mean.lo(j, 1) = ci(1);
-        corr_obj.mean.up(j, 1) = ci(2);
+      % simple mean, CI and p-value of t-test
+      corr_obj.mean.corr(j, 1) = mean(corr_obj.corr(:, j));
+      [~, tdr.mean.prob(1,j), ci] = ttest(corr_obj.corr(:, j), 0, 'alpha', alpha);
+      corr_obj.mean.lo(j, 1) = ci(1);
+      corr_obj.mean.up(j, 1) = ci(2);
     end
 end
 
@@ -185,19 +228,19 @@ function [] = plot_corr_dynamic_int( corr_obj, nCols,  nObs, title_str )
     % Plot graph of time-dependent Pearson correlation
     figure;
     for i=1:nCols;
-        subplot(nCols, 1, i);
-        plot(corr_obj.corr(:, i));
-        
-        if (i == 1)
-            title(title_str);
-        end
-        
-        xlim([1 nObs]);
-        ylim([-1 1]);
-        
-        if (i < nCols);
-            set(gca, 'xticklabel', '');
-        end
+      subplot(nCols, 1, i);
+      plot(corr_obj.corr(:, i));
+      
+      if (i == 1)
+          title(title_str);
+      end
+      
+      xlim([1 nObs]);
+      ylim([-1 1]);
+      
+      if (i < nCols);
+          set(gca, 'xticklabel', '');
+      end
     end
 end
 

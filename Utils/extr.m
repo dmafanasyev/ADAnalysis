@@ -1,4 +1,4 @@
-function [indmin, indmax, indzer] = extr(x);
+function [indmin, indmax, indzer] = extr(x)
     % EXTR Finds extrema and zero-crossings
     %   Input:
     %       x - source data

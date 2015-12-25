@@ -1,4 +1,4 @@
-function [modes,its]=iceemdan(x,Nstd,NR,MaxIter,SNRFlag)
+function [modes,its]=iceemdan_par(x,Nstd,NR,MaxIter,SNRFlag)
 %Function for CEEMDAN
 %
 %WARNING: for this code works it is necessary to include in the same
@@ -45,15 +45,10 @@ function [modes,its]=iceemdan(x,Nstd,NR,MaxIter,SNRFlag)
 %Last version: 25 feb 2015
 %
 % -------------------------------------------------------------------------
-% Date: August 8,2015
-% Authors:  Dmitriy O. Afanasyev, dmafanasyev@gmail.com
-% Version 1.1
-% Change Notes: Rename method and Matlab-file for compatibility
-% -------------------------------------------------------------------------
 % Date: September 01,2015
 % Authors:  Dmitriy O. Afanasyev, dmafanasyev(AT)gmail.com
-% Version 1.2
-% Change Notes: Some minor optimization for preallocation of variables.
+% Version 1.1
+% Change Notes: Optimized for parallel computations. Some minor optimization for preallocation of variables. This version was run on Matlab R2014b.
 % -------------------------------------------------------------------------
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -74,7 +69,7 @@ for i=1:NR
     modes_white_noise{i}=emd(white_noise{i});%calculates the modes of white gaussian noise
 end;
 
-for i=1:NR %calculates the first mode
+parfor i=1:NR %calculates the first mode
     xi=x+Nstd*modes_white_noise{i}(1,:)/std(modes_white_noise{i}(1,:));
     [temp, ~, it]=emd(xi,'MAXMODES',1,'MAXITERATIONS',MaxIter);
     temp=temp(1,:);
@@ -84,15 +79,15 @@ end;
 
 modes= x-aux; %saves the first mode
 medias = aux;
-k=1;
+k=2;
 aux=zeros(size(x));
 es_imf = min(size(emd(medias(end,:),'MAXMODES',1,'MAXITERATIONS',MaxIter)));
 
 while es_imf>1 %calculates the rest of the modes
-    for i=1:NR
+    parfor i=1:NR
         tamanio=size(modes_white_noise{i});
-        if tamanio(1)>=k+1
-            noise=modes_white_noise{i}(k+1,:);
+        if tamanio(1)>=k
+            noise=modes_white_noise{i}(k,:);
             if SNRFlag == 2
                 noise=noise/std(noise); %adjust the std of the noise
             end;
@@ -116,7 +111,7 @@ while es_imf>1 %calculates the rest of the modes
             temp=temp(end,:);
         end;
         aux=aux+temp/NR;
-    iter(i,k+1)=it;    
+        iter(i,k)=it;    
     end;
     modes=[modes;medias(end,:)-aux];
     medias = [medias;aux];
