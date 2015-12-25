@@ -48,30 +48,37 @@ function [modes, its]=ceemdan_par(x,Nstd,NR,MaxIter)
     % Date: April 22,2014
     % Authors:  Dmitriy O. Afanasyev, dmafanasyev(AT)gmail.com
     % Version 1.1
-    % Change Notes: Optimized for parallel computations.This version was run on Matlab R2013b.
+    % Change Notes: Optimized for parallel computations. This version was run on Matlab R2013b
+    % -------------------------------------------------------------------------
+    % -------------------------------------------------------------------------
+    % Date: September 01,2015
+    % Authors:  Dmitriy O. Afanasyev, dmafanasyev(AT)gmail.com
+    % Version 1.2
+    % Change Notes: Some minor optimization for preallocation of variables.
     % -------------------------------------------------------------------------
     
     x=x(:)';
     desvio_x=std(x);
     x=x/desvio_x;
     
-    modes=zeros(size(x));
-    temp=zeros(size(x));
     aux=zeros(size(x));
-    acum=zeros(size(x));
     iter=zeros(NR,round(log2(length(x))+5));
     
+    white_noise = cell(1,NR);
     for i=1:NR
         white_noise{i}=randn(size(x));%creates the noise realizations
     end;
     
+    modes_white_noise = cell(1,NR);
     for i=1:NR
         modes_white_noise{i}=emd(white_noise{i});%calculates the modes of white gaussian noise
+%         modes_white_noise{i} = emdc([], white_noise{i});
     end;
     
     parfor i=1:NR %calculates the first mode
         temp=x+Nstd*white_noise{i};
-        [temp, o, it]=emd(temp,'MAXMODES',1,'MAXITERATIONS',MaxIter);
+        [temp, ~, it]=emd(temp,'MAXMODES',1,'MAXITERATIONS',MaxIter);
+        %[temp, it] = emd_first_mode(temp, MaxIter);
         temp=temp(1,:);
         aux=aux+temp/NR;
         iter(i,1)=it;
@@ -83,12 +90,22 @@ function [modes, its]=ceemdan_par(x,Nstd,NR,MaxIter)
     acum=sum(modes,1);
     
     while nnz(diff(sign(diff(x-acum))))>2 %calculates the rest of the modes
+%         disp(num2str(nnz(diff(sign(diff(x-acum))))));
         parfor i=1:NR
             tamanio=size(modes_white_noise{i});
             if tamanio(1) >= k
                 noise=modes_white_noise{i}(k-1,:);
                 noise=noise/std(noise);
                 noise=Nstd*noise;
+                
+%                 [temp, it] = emd_first_mode(x-acum+std(x-acum)*noise, MaxIter);
+%                 if(isempty(it))
+%                     it = 0;
+%                     temp=x-acum;
+%                 else
+%                     temp=temp(1,:);
+%                 end
+                
                 try
                     [temp, ~, it]=emd(x-acum+std(x-acum)*noise,'MAXMODES',1,'MAXITERATIONS',MaxIter);
                     temp=temp(1,:);
@@ -97,6 +114,9 @@ function [modes, its]=ceemdan_par(x,Nstd,NR,MaxIter)
                     temp=x-acum;
                 end;
             else
+%                 [temp, it] = emd_first_mode(x-acum, MaxIter);
+%                 temp=temp(1,:);
+                
                 [temp, ~, it]=emd(x-acum,'MAXMODES',1,'MAXITERATIONS',MaxIter);
                 temp=temp(1,:);
             end;
@@ -110,7 +130,16 @@ function [modes, its]=ceemdan_par(x,Nstd,NR,MaxIter)
         k=k+1;
     end;
     modes=[modes;(x-acum)];
-    [a b]=size(modes);
+    [a, ~]=size(modes);
     iter=iter(:,1:a);
     modes=modes*desvio_x;
     its=iter;
+end
+
+function [mode, it] = emd_first_mode(x, MaxIter)
+    if(isinf(MaxIter) || isnan(MaxIter))
+        [mode, it] = emdc([], x, [], 1);
+    else
+        [mode, it] = emdc_fix([], x, MaxIter, 1);
+    end
+end
