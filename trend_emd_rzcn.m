@@ -1,5 +1,5 @@
-function [ filtered, trend, idx, h, rzcn ] = trend_emd_rzcn( imfs, plots, alpha )
-%TREND_EMD_ENERGY Summary of this function goes here
+function [ trend, filtered, idx, rzcn, h] = trend_emd_rzcn( imfs, plots, alpha )
+%TREND_EMD_RZCN Summary of this function goes here
 %   Detailed explanation goes here
 %   Moghtader, A., Borgnat, P., Flandrin, P., 2011. Trend filtering: empirical mode decomposition versus l1 and Hodrick-Prescott. Advances in Adaptive Data Analysis 3 (1 and 2), 41–61.
 
@@ -31,7 +31,7 @@ function [ filtered, trend, idx, h, rzcn ] = trend_emd_rzcn( imfs, plots, alpha 
         error(alphaErr);
     end
     
-    % if time is columns then transpose matrix (I assume that the number of observations is greater than number of IMFs always)
+    % if time is columns then transpose matrix (this is assumed that the number of observations is greater than number of IMFs always)
     if (size(imfs, 2) > size(imfs, 1))
         imfs = imfs.';
     end
@@ -42,7 +42,7 @@ function [ filtered, trend, idx, h, rzcn ] = trend_emd_rzcn( imfs, plots, alpha 
     rzcn = zeros(1, nImf);
     idx = zeros(1, nImf);
     
-    % determine trend indexes using statistical criteria
+    % determine trend indexes using ratio of zero-crossing numbers criteria
     for i=1:nImf
         [period(i, 1), ~, ~, indzer, numzercur] = period_zero_cross(imfs(:, i));
         

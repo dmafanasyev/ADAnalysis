@@ -113,6 +113,8 @@ if max(size(d)) == 1,
     OptN = N0 + find(max(dv)==dv) - 1;
 
     % Use the first OptN values of x for further analysis
+    %Dmitriy O. Afanasyev, 2016.03.10: one string of code for implementation of comment above
+    OptN = OptN(1);
 
     x = x(1:OptN);
 

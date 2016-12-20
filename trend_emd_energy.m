@@ -1,4 +1,4 @@
-function [ filtered, trend, idx, h, energy ] = trend_emd_energy( imfs, plots )
+function [ trend, filtered, idx, h, energy ] = trend_emd_energy( imfs, plots )
 %TREND_EMD_ENERGY Summary of this function goes here
 %   Detailed explanation goes here
 %   Moghtader, A., Borgnat, P., Flandrin, P., 2011. Trend filtering: empirical mode decomposition versus l1 and Hodrick-Prescott. Advances in Adaptive Data Analysis 3 (1 and 2), 41–61.
@@ -22,7 +22,7 @@ function [ filtered, trend, idx, h, energy ] = trend_emd_energy( imfs, plots )
     energy = zeros(1, nImf);
     idx = zeros(1, nImf);
     
-    % determine trend indexes using statistical criteria
+    % determine trend indexes using energy criteria
     for i=1:nImf
         energy(i) = sum(imfs(:, i).^2, 1)/nObs;
         

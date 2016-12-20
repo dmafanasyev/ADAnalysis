@@ -12,7 +12,7 @@ function [ h ] = imfs_dendrogram( imfSet, method, metric, threshold, titles, lab
         for i = 1:setSize
         imfNum = size(imfSet{i},2);
         for j = 1:imfNum
-            lables{i}{j} = ['IMF_{', num2str(j),'}'];
+            lables{i}{j} = num2str(j);
         end
         end
     end
@@ -25,6 +25,10 @@ function [ h ] = imfs_dendrogram( imfSet, method, metric, threshold, titles, lab
         useWide = 0;
         axRowN = 1;
         axColN = setSize;
+    elseif(setSize == 3)
+        useWide = 1;
+        axRowN = 2;
+        axColN = 2;
     elseif(rem(setSize, 2) == 0)
         useWide = 0;
         axRowN = setSize/2;
@@ -35,7 +39,7 @@ function [ h ] = imfs_dendrogram( imfSet, method, metric, threshold, titles, lab
         axColN = axRowN - 1;
     end
     
-    fontSize = 14;
+    fontSize = 16;
     fontName = 'Helvetica';
 
     h = figure;
@@ -60,9 +64,13 @@ function [ h ] = imfs_dendrogram( imfSet, method, metric, threshold, titles, lab
 %             hd = dendrogram(tree,  'Labels', lables, 'Reorder', optimalleaforder(tree, dist));
 %         end
         set(hd, 'LineWidth', 1.5);
+        if(threshold == 0)
+            set(hd, 'Color', [0, 0.447, 0.741]);
+        end
         set(ax, 'FontSize', fontSize);
         set(ax, 'FontName', fontName);
         set(ax, 'Box', 'on');
+        set(ax, 'YGrid', 'on');
         title(ax, titles{i});
     end
 

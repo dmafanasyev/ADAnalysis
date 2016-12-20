@@ -1,4 +1,4 @@
-function [ filtered, trend, idx ] = trend_emd_frequency( imfs )
+function [ trend, filtered, idx ] = trend_emd_frequency( imfs )
 %TREND_EMD_FREQUENCY Summary of this function goes here
 %   Detailed explanation goes here
 %   Afanasyev, D., Fedorova, E., Popov, V., 2015. Fine structure of the price-demand relationship in the electricity market: multi-scale correlation analysis. Energy Economics 51, 215-226.
@@ -16,7 +16,7 @@ function [ filtered, trend, idx ] = trend_emd_frequency( imfs )
     
     idx = zeros(1, nImf);
     
-    % determine trend indexes using statistical criteria
+    % determine trend indexes using low-frequency criteria
     for i=1:nImf
         if(i >= nImf/2+1)
             idx(i) = i;
