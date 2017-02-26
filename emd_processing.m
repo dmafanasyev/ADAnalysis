@@ -232,7 +232,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     %if(strcmp(method, 'emd') && trendidx == 0)
     %    trend = residue;
     %else
-        trend = sum(imf(:, trendidx:nImf), 2) + residue;
+    trend = sum(imf(:, trendidx:nImf), 2) + residue;
     %end
     ddata = data - trend;
     

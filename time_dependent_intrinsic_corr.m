@@ -1,4 +1,4 @@
-function [ tdc, tlc, tic, instant ] = time_dependent_intrinsic_corr( data1, data2, bootstrap, plots, periodn, alpha )
+function [ tdc, tlc, tic, instant ] = time_dependent_intrinsic_corr( imfs1, imfs2, bootstrap, plots, prints, subranges, periodn, alpha )
     %TIME_DEPENDENT_INTRINSIC_CORR Calculate time-dependent intrinsic correlation
     %   
     %   This is proxy-function for short-named routine tdic
@@ -11,6 +11,6 @@ function [ tdc, tlc, tic, instant ] = time_dependent_intrinsic_corr( data1, data
     %       1.2 2016.12.11: the code moved to short-titled tdic routine
     %   
     
-    [tdc, tlc, tic, instant] = tdic(data1, data2, bootstrap, plots, periodn, alpha);
+    [tdc, tlc, tic, instant] = tdic(imfs1, imfs2, bootstrap, plots, prints, subranges, periodn, alpha);
     
 end

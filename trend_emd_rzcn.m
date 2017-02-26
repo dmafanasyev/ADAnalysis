@@ -3,7 +3,7 @@ function [ trend, filtered, idx, rzcn, h] = trend_emd_rzcn( imfs, plots, alpha )
 %   Detailed explanation goes here
 %   Moghtader, A., Borgnat, P., Flandrin, P., 2011. Trend filtering: empirical mode decomposition versus l1 and Hodrick-Prescott. Advances in Adaptive Data Analysis 3 (1 and 2), 41–61.
 
-     if(nargin == 0 || ~ismatrix(imfs))
+    if(nargin == 0 || ~ismatrix(imfs))
         error('Input data must be non empty matrix');
     end
     

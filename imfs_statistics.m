@@ -56,7 +56,7 @@ function [ stat ] = imfs_statistics( data, imfs, doprint, alpha)
         for i = 1:nImfs
             rowTitles{1,i} = num2str(i);
         end
-        colTitles = {'IMF \\#', 'Mean period', 'Variation', 'Variation, %%', 'Pearson correlation', 'p-value', 'Energy (log\\_2)', ['Critical value (log\\_2, ', num2str(alpha*100), '\\%%-level)'], 'fGn test passed'};
+        colTitles = {'Mean period', 'Variation', 'Variation, \\%%', 'Pearson correlation', 'p-value', 'Energy ($\\log_2$)', ['Critical value ($\\log_2$, ', num2str(alpha*100), '\\%%-level)'], 'fGn test passed'};
         tblTitle = 'IMFs statistics';
         formatSpec = {'%.1f', '', '%.1f', '%.2f', '%.2f', '%.2f', '%.2f', '%i'};
         
