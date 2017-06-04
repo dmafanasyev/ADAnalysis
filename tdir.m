@@ -1,14 +1,15 @@
-function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factorsName, periodn, alpha )
+function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, showResult, factorsName, periodn, alpha, vifMax )
     %TDIR Calculate time-dependent intrinsic regression (TDIR), bootstraping median of the coefficients estimations and instantaneous characteristics (using Hilbert transformation).
     %   
-    %   TODO: write docs
+    %   TODO: docs
     %
-    %   Copyright (c) 2016 by Dmitriy O. Afanasyev
+    %   Copyright (c) 2014-2017 by Dmitriy O. Afanasyev
     %   Versions:
     %   v0.1 2014.11.25: initial version
-    %   v0.2 2015.06.28: model summary on origin data level, visualization and results print (latex) 
-    %   v0.3 2016.08.03: indicative significance function for coefficient avereging; JB, LBQ and ARCH tests
-    %   v0.3 2016.09.10: HAC covariance estimation (Newey-West form)
+    %   v0.2 2015.06.28: model summary on original data level, visualization and results print (LaTeX)
+    %   v0.3 2016.08.03: indicative significance function for coefficient avereging; JB, LBQ and ARCH tests for residuals
+    %   v0.4 2016.09.10: HAC covariance estimation (Newey-West form)
+    %   v0.5 2017.06.04: multicollinearity (VIF) and endogeneity analysis, AD and t tests for residuals, nMAE and nRMSE
     %
     
     if (nargin < 4)
@@ -22,7 +23,7 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
         bootstrap = 0;
     end
     if (nargin < 6)
-        plots = 0;
+        showResult = 0;
     end
     if (nargin < 7)
         factorsName = cell(1,nFactors);
@@ -35,6 +36,9 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
     end
     if (nargin < 9)
         alpha = 0.05;
+    end
+    if (nargin < 10)
+        vifMax = 10;
     end
     
     % check number of observations and IMFs at Y and X
@@ -69,18 +73,12 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
     periodX = nan(1,nFactors);
 
     for j = 1:nImfs
-    %for j = nImfs:-1:1
-        
         %intercept = (j == nImfs);
         intercept = (1==1);
         
         % Time-independent regression
         x_j = nan(nObs, nFactors);
         for k = 1:nFactors
-            % if some columns is zero (the factor is excluded from regression) then switch off warrning message about the rank deficient
-            if(xImf{1,k}(:,j) == zeros(nObs,1))
-                warning('off', 'stats:LinearModel:RankDefDesignMat');
-            end
             x_j(:,k) = xImf{1,k}(:,j);
         end
         
@@ -97,25 +95,32 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
         ci = abs(tinv(alpha/2, mdl.DFE)) * tir.bse{j}(1,1:nFactors+intercept);
         tir.blo{j}(1,1:nFactors+intercept) = tir.b{j}(1,1:nFactors+intercept) - ci;
         tir.bup{j}(1,1:nFactors+intercept) = tir.b{j}(1,1:nFactors+intercept) + ci;
-        tir.var(1,j) = var(mdl.Residuals.Raw);
         tir.R2(1,j) = mdl.Rsquared.Ordinary;
+        [~,  ~, ~, ~, ~, tir.nMAE(1,j), tir.nRMSE(1,j)] = mean_errors(yImf(:,j), mdl.Fitted);
         tir.F(1,j) = (tir.R2(1,j)/nFactors) / ((1 - tir.R2(1,j))/(nObs - nFactors - 1));
         tir.Fp(1,j) = 1 - fcdf(tir.F(1,j), nFactors, nObs-nFactors-1);
-        [~, tir.JBp(1,j), tir.JB(1,j)] = jbtest(mdl.Residuals.Standardized); % H0: normal distribution with unknown mean and variance
+        tir.resMean(1,j) = mean(mdl.Residuals.Raw);
+        tir.resVar(1,j) = sum(mdl.Residuals.Raw.^2,1)/(nObs - nFactors - 1);
+        [~, tir.resADp(1,j), tir.resAD(1,j)] = adtest(mdl.Residuals.Standardized, 'Distribution', makedist('normal','mu',0,'sigma',1), 'Asymptotic', (nObs > 120)); % H0: normal distribution with mean equal to 0 and variance 1
+        [~, tir.resTp(1,j)] = ttest(mdl.Residuals.Standardized, 0); % H0: normal distribution with mean equal to 0 and unknown variance
+        [~, tir.resJBp(1,j), tir.resJB(1,j)] = jbtest(mdl.Residuals.Standardized, alpha); % H0: normal distribution with unknown mean and variance
         lbqLags = min(12, nObs-1);
-        [~, tir.LBQp(1,j), tir.LBQ(1,j)] = lbqtest(mdl.Residuals.Standardized, 'Lags', lbqLags, 'dof', max(1, lbqLags - nFactors));% H0: about no jointly autocorrelation
+        [~, tir.resLBQp(1,j), tir.resLBQ(1,j)] = lbqtest(mdl.Residuals.Standardized, 'Lags', lbqLags, 'dof', max(1, lbqLags - nFactors));% H0: no jointly autocorrelation
+        if(intercept)
+            [tir.resDWp(1,j), tir.resDW(1,j)] = dwtest(mdl.Residuals.Standardized, [ones(nObs,1) x_j]);% H0: residuals are uncorrelated;
+        else
+            [tir.resDWp(1,j), tir.resDW(1,j)] = dwtest(mdl.Residuals.Standardized, x_j);% H0: residuals are uncorrelated;
+        end
         [~, tir.ARCHp(1,j), tir.ARCH(1,j)] = archtest(mdl.Residuals.Standardized, 'Lags', 1);% H0: no conditional heteroscedasticity (ARCH effect)
+        [r_tmp, p_tmp] = corrcoef([mdl.Residuals.Raw x_j]);
+        tir.resXR{j}(1,1:nFactors) = r_tmp(1,2:end);
+        tir.resXRp{j}(1,1:nFactors) = p_tmp(1,2:end);
+        tir.VIF{j}(1,1:nFactors) = diag(inv(corrcoef(x_j)))';
         
         % Time-dependent regression
         for t = 1:nObs
-            
             for k = 1:nFactors
-                if(xImf{1,k}(:,j) == zeros(nObs,1))
-                    periodX(1,k) = 0;
-                    warning('off', 'stats:LinearModel:RankDefDesignMat');
-                else
-                    periodX(1,k) = instant.x{1,k}.period(t,j);
-                end
+                periodX(1,k) = instant.x{1,k}.period(t,j);
             end
             
             halfWinSizeMin = round(periodn*max([instant.y.period(t, j), periodX])/2);
@@ -146,18 +151,8 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
             end
             
             y_win = yImf(ts:te,j);
-            tdr.win(t,j) = nx_win;
             
             mdl = fitlm(x_win, y_win, 'Intercept', intercept);
-            warning('on', 'stats:LinearModel:RankDefDesignMat');
-            
-%             tdr.b{j}(t,1:nFactors+intercept) = mdl.Coefficients.Estimate;
-%             tdr.bse{j}(t,1:nFactors+intercept) = mdl.Coefficients.SE;
-%             tdr.bts{j}(t,1:nFactors+intercept) = mdl.Coefficients.tStat;
-%             tdr.bp{j}(t,1:nFactors+intercept) = mdl.Coefficients.pValue;
-%             ci = coefCI(mdl, alpha);
-%             tdr.blo{j}(t,1:nFactors+intercept) = ci(1:nFactors+intercept,1);
-%             tdr.bup{j}(t,1:nFactors+intercept) = ci(1:nFactors+intercept,2);
             
             tdr.b{j}(t,1:nFactors+intercept) = mdl.Coefficients.Estimate';
             try
@@ -171,35 +166,44 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
             ci = abs(tinv(alpha/2, mdl.DFE)) * tdr.bse{j}(t,1:nFactors+intercept);
             tdr.blo{j}(t,1:nFactors+intercept) = tdr.b{j}(t,1:nFactors+intercept) - ci;
             tdr.bup{j}(t,1:nFactors+intercept) = tdr.b{j}(t,1:nFactors+intercept) + ci;
-            tdr.var(t,j) = var(mdl.Residuals.Raw);
             tdr.R2(t,j) = mdl.Rsquared.Ordinary;
+            [~,  ~, ~, ~, ~, tdr.nMAE(t,j), tdr.nRMSE(t,j)] = mean_errors(y_win, mdl.Fitted);
             tdr.F(t,j) = (tdr.R2(t,j)/nFactors) / ((1 - tdr.R2(t,j))/(nx_win - nFactors - 1));
             tdr.Fp(t,j) = 1 - fcdf(tdr.F(t,j), nFactors, nx_win-nFactors-1);
-            [~, tdr.JBp(t,j), tdr.JB(t,j)] = jbtest(mdl.Residuals.Standardized); % H0: normal distribution with unknown mean and variance
+            tdr.resMean(t,j) = mean(mdl.Residuals.Raw);
+            tdr.resVar(t,j) = sum(mdl.Residuals.Raw.^2,1)/(nx_win - nFactors - 1);
+            [~, tdr.resADp(t,j), tdr.resAD(t,j)] = adtest(mdl.Residuals.Standardized, 'Distribution', makedist('normal','mu',0,'sigma',1), 'Asymptotic', (nx_win > 120)); % H0: normal distribution with mean equal to 0 and variance 1
+            [~, tdr.resTp(t,j)] = ttest(mdl.Residuals.Standardized, 0); % H0: normal distribution with mean equal to 0 and unknown variance
+            [~, tdr.resJBp(t,j), tdr.resJB(t,j)] = jbtest(mdl.Residuals.Standardized, alpha); % H0: normal distribution with unknown mean and variance
             lbqLags = min(12, nx_win-1);
-            [~, tdr.LBQp(t,j), tdr.LBQ(t,j)] = lbqtest(mdl.Residuals.Standardized, 'Lags', lbqLags, 'dof', max(1, lbqLags - nFactors));% H0: no jointly autocorrelation
-            [~, tdr.ARCHp(t,j), tdr.ARCH(t,j)] = archtest(mdl.Residuals.Standardized, 'Lags', 1);% H0: no conditional heteroscedasticity (ARCH effect)
+            [~, tdr.resLBQp(t,j), tdr.resLBQ(t,j)] = lbqtest(mdl.Residuals.Standardized, 'Lags', lbqLags, 'dof', max(1, lbqLags - nFactors));% H0: no jointly autocorrelation
+            if(intercept)
+                [tdr.resDWp(t,j), tdr.resDW(t,j)] = dwtest(mdl.Residuals.Standardized, [ones(nx_win,1) x_win]);% H0: residuals are uncorrelated;
+            else
+                [tdr.resDWp(t,j), tdr.resDW(t,j)] = dwtest(mdl.Residuals.Standardized, x_win);% H0: residuals are uncorrelated;
+            end
+            [~, tdr.resARCHp(t,j), tdr.resARCH(t,j)] = archtest(mdl.Residuals.Standardized, 'Lags', 1);% H0: no conditional heteroscedasticity (ARCH effect)
+            [r_tmp, p_tmp] = corrcoef([mdl.Residuals.Raw x_win]);
+            tdr.resXR{j}(t,1:nFactors) = r_tmp(1,2:end);
+            tdr.resXRp{j}(t,1:nFactors) = p_tmp(1,2:end);
+            tdr.VIF{j}(t,1:nFactors) = diag(inv(corrcoef(x_win)))';
+            tdr.win(t,j) = nx_win;
             
-%             [tdr.b{j}(t,1:nFactors+1), stats] = robustfit(x_win, y_win, 'ols', 1, 'on');
-%             tdr.bse{j}(t,1:nFactors+1) = stats.se';
-%             tdr.bts{j}(t,1:nFactors+1) = stats.t';
-%             tdr.bp{j}(t,1:nFactors+1) = stats.p';
-%             b_ci = abs(tinv(alpha/2, nx_win-nFactors-1)) * tdr.bse{j}(t,:);
-%             tdr.blo{j}(t,1:nFactors+1) = tdr.b{j}(t,:) - b_ci;
-%             tdr.bup{j}(t,1:nFactors+1) = tdr.b{j}(t,:) + b_ci;
-%             tdr.R2(t,j) =  max(0, 1 - (sum(stats.resid.^2, 1) / sum((y_win - mean(y_win)).^2, 1)));
-%             tdr.F(t,j) = (tdr.R2(t,j)/nFactors) / ((1 - tdr.R2(t,j))/(nx_win - nFactors - 1));
-%             tdr.Fp(t,j) = 1 - fcdf(tdr.F(t,j), nFactors, nx_win-nFactors-1);
-            
-            % compute fitted values (only for model that significantly differ from intercept model)
+            % compute fitted values (for model that significantly differ from intercept model, otherwise use mean of independent value)
             if(round(tdr.Fp(t,j), 2) <= alpha)
                 if(intercept)
-                    tdr.fitImf(t,j) = tdr.b{j}(t,:)*[1; x_curr'];
+                    tdr.fitted(t,j) = tdr.b{j}(t,:)*[1; x_curr'];
                 else
-                    tdr.fitImf(t,j) = tdr.b{j}(t,:)*x_curr';
+                    tdr.fitted(t,j) = tdr.b{j}(t,:)*x_curr';
                 end
             else
-                tdr.fitImf(t,j) = 0;
+                tdr.fitted(t,j) = mean(y_win);
+            end
+            
+            if(intercept)
+                tdr.fitted2(t,j) = tdr.b{j}(t,:)*[1; x_curr'];
+            else
+                tdr.fitted2(t,j) = tdr.b{j}(t,:)*x_curr';
             end
         end
         
@@ -209,8 +213,9 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
             tdr.b{j}(:,k) = sign.*tdr.b{j}(:,k);
         end
         
+        % averaged coefficients and SEs
         if(bootstrap > 0)
-            % bootstrap median, CI and p-value of t-test for beta coefficients
+            % bootstraped median
             for k = 1:nFactors+intercept
                 bootstat = bootstrp(bootnum, @median, tdr.b{j}(:,k));
                 tdr.mean.b{j}(k,1)  = mean(bootstat);
@@ -222,59 +227,55 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
                 tdr.mean.bp{j}(k,1) = 1 - tcdf(abs(tdr.mean.bts{j}(k,1)), bootnum-1);
             end
         else
-            % simple mean, CI and p-value of t-test for beta coefficients
+            % simple median
             for k = 1:nFactors+intercept
-                tdr.mean.b{j}(k,1)  = mean(tdr.b{j}(:,k));
-                tdr.mean.bse{j}(k,1)  = mean(tdr.bse{j}(:,k));
+                tdr.mean.b{j}(k,1)  = median(tdr.b{j}(:,k));
+                tdr.mean.bse{j}(k,1)  = median(tdr.bse{j}(:,k));
                 tdr.mean.bts{j}(k,1) = tdr.mean.b{j}(k,1)/(tdr.mean.bse{j}(k,1));
                 tdr.mean.bp{j}(k,1) = 1 - tcdf(abs(tdr.mean.bts{j}(k,1)), bootnum-1);
             end
         end
     end
     
-    % summary for origin data level
-    tdr.summary.fit = sum(tdr.fitImf, 2);
-    tdr.summary.R2 = 1 - sum((y(:)-tdr.summary.fit(:)).^2)/sum((y(:)-mean(y(:))).^2);
-    [tdr.summary.MAE, tdr.summary.MAPE, tdr.summary.MSE, tdr.summary.RMSE] = mean_errors(y, tdr.summary.fit);
+    % averaged indicators
+    tdr.mean.R2 = median(tdr.R2);
+    tdr.mean.nMAE = median(tdr.nMAE);
+    tdr.mean.nRMSE = median(tdr.nRMSE);
+    tdr.mean.Fp = median(tdr.Fp);
+    tdr.mean.FpN = round(100*sum((tdr.Fp <= alpha),1)/nObs);
+    tdr.mean.resMean = median(tdr.resMean);
+    tdr.mean.resADp = median(tdr.resADp);
+    tdr.mean.resADpN = round(100*sum((tdr.resADp >= alpha),1)/nObs);
+    tdr.mean.resTp = median(tdr.resTp);
+    tdr.mean.resTpN = round(100*sum((tdr.resTp >= alpha),1)/nObs);
+    tdr.mean.resJBp = median(tdr.resJBp);
+    tdr.mean.resJBpN = round(100*sum((tdr.resJBp >= alpha),1)/nObs);
     
-    % estimation of the source data liner regression coefficients based on
-    % TDIR coefficients
-%     tdr.rec.b = nan(1,nFactors+1);
-%     x_j = nan(nObs, nFactors+1);
-%     
-%     for j =1:nImfs
-%         intercept = (j == nImfs);
-%         
-%         if(intercept)
-%             x_j(:,1) = ones(nObs,1);
-%         else
-%             x_j(:,1) = zeros(nObs,1);
-%         end
-%         
-%         for k = 1:nFactors
-%             x_j(:,k+1) = xImf{1,k}(:,j);
-%         end
-%         
-%         tdr.rec.b  = tdr.rec.b + tdr.b{j}.*(x_j./x);
-%     end
+    for j = 1:nImfs
+        tdr.mean.resXRp(j,:) = median(tdr.resXRp{j});
+        tdr.mean.resXRpN(j,:) = round(100*sum((tdr.resXRp{j} >= alpha),1)/nObs);
+        tdr.mean.VIF(j,:) = median(tdr.VIF{j});
+        tdr.mean.VIFN(j,:) = round(100*sum((tdr.VIF{j} < vifMax),1)/nObs);
+    end
     
-    % plot results
-    if(plots>0)
+    % summary for original data level
+    tdr.original.fitted = sum(tdr.fitted, 2);
+    [tdr.original.MAE, tdr.original.MAPE, tdr.original.MSE, tdr.original.RMSE, tdr.original.WAPE, tdr.original.nMAE, tdr.original.nRMSE] = mean_errors(y, tdr.original.fitted);
+    
+    % show results
+    if(showResult>0)
          fontName = 'Helvetica';
          fontSize = 16;
          
-         % plot model parameters dynamic (without intercept)
+         % plot the model parameters time-series (without intercept)
          axisInd = 0;
          figure;
          for j = 1:nImfs
-             
              %intercept = (j == nImfs);
              intercept = (1==1);
              
              for k = 1:nFactors
-                 
                  signDummy = (round(tdr.bp{j}(:,k+intercept), 2) <= alpha);
-                 
                  axisInd = axisInd + 1;
                  
                  subplot(nImfs, nFactors, axisInd, 'FontName', fontName, 'FontSize', fontSize, 'Box', 'on');
@@ -302,23 +303,21 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
              end
          end
          
-         %plot source vs fitted data
+         %plot actual vs fitted data
          figure;
          subplot(1, 1, 1,  'FontName', fontName, 'FontSize', fontSize, 'Box', 'on');
          hold on;
-         plot((1:nObs)', y, (1:nObs)', tdr.summary.fit);
+         plot((1:nObs)', y, (1:nObs)', tdr.original.fitted);
          xlim([1 nObs]);
-         %title('Source and fitted data');
-         legend('Source data', ['Fitted data (R^2 = ', num2str(tdr.summary.R2, '%.2f'), ', MAPE = ', num2str(tdr.summary.MAPE, '%.1f'), '%)']);
+         legend('Actual data', 'Fitted data');
          hold off;
          
-         % print table with model parameters
+         % print table with averaged model parameters
+         bTable = cell(nImfs,nFactors+1);
          bColTitles = cell(1,nFactors+1);
          bRowTitles = cell(1,nImfs);
-         bTable = cell(nImfs,nFactors+1);
          formatSpec = '%.3f';
          for j = 1:nImfs
-             
              %intercept = (j == nImfs);
              intercept = (1 == 1);
              
@@ -335,7 +334,6 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
                              '\\textsuperscript{', pvalue_to_asterisks(tdr.mean.bp{j}(k-1,1)), '}', ...
                              ' (', num2str(tdr.mean.bse{j}(k-1,1), formatSpec), ')'];
                      end
-                     
                  end
                  
                  if(j == 1)
@@ -347,13 +345,43 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, plots, factor
                      bColTitles{k} = ['$\\beta_{', factorName, '}$'];
                  end
              end
-             
-             %     bTable{imfInd, factorInd+1} = num2str(tdr.mean.R2(imfInd)*100, '%.1f');
-             %     bColTitles{factorInd+1} = ['$R^2$'];
-             
              bRowTitles{j} = num2str(j);
          end
-         print_latex_table( bTable, bColTitles, bRowTitles);
+         print_latex_table(bTable, bColTitles, bRowTitles, '', 'Averaged model parameters.');
+         
+         % print table with average models quality measures and indicators of the residuals diagnostic
+        dTable = cell(nImfs, 6);
+        dRowTitles = cell(1,nImfs);
+        for j = 1:nImfs
+            dTable{j,1} = num2str(tdr.mean.nMAE(j), '%.2f');
+            dTable{j,2} = num2str(round(100*tdr.mean.R2(j)), '%i');
+            dTable{j,3} = [num2str(tdr.mean.Fp(j), '%.2f'), ' (', num2str(tdr.mean.FpN(j), '%i'), ')'];
+            dTable{j,4} = [num2str(tdr.mean.resADp(j), '%.2f'), ' (', num2str(tdr.mean.resADpN(j), '%i'), ')'];
+            dTable{j,5} = [num2str(tdr.mean.resTp(j), '%.2f'), ' (', num2str(tdr.mean.resTpN(j), '%i'), ')'];
+            dTable{j,6} = [num2str(tdr.mean.resJBp(j), '%.2f'), ' (', num2str(tdr.mean.resJBpN(j), '%i'), ')'];
+            dRowTitles{j} = num2str(j);
+        end
+        print_latex_table(dTable, ...
+            {'$\\overline{nMAE}$', '$\\overline{R^2}$', '$\\overline{p}_F (N_{\\overline{p}_F})$', '$\\overline{p}_{AD} (N_{\\overline{p}_{AD}})$', ...
+            '$\\overline{p}_t (N_{\\overline{p}_t})$', '$\\overline{p}_{JB} (N_{\\overline{p}_{JB}})$'}, ...
+            dRowTitles, '', 'Averaged the models quality measures and indicators of the residuals diagnostic.');
+        
+        % print table with multicollinearity and endogeneity analysis results
+        mrTable = cell(nImfs, 2*nFactors);
+        mrColTitles = cell(1,2*nFactors);
+        mrRowTitles = cell(1,nImfs);
+        for j = 1:nImfs
+            for k =1:nFactors
+                if(j == 1)
+                    mrColTitles{1,k} = ['$\\overline{VIF}_{', factorsName{k}, '} (N_{\\overline{VIF}_{', factorsName{k}, '}})$'];
+                    mrColTitles{1,k+nFactors} = ['$\\overline{p}_{', factorsName{k}, 'r} (N_{\\overline{p}_{', factorsName{k}, 'r}})$'];
+                end
+                mrTable{j,k} = [num2str(tdr.mean.VIF(j,k), '%.2f'), ' (', num2str(tdr.mean.VIFN(j,k), '%i'), ')'];
+                mrTable{j,k+nFactors} = [num2str(tdr.mean.resXRp(j,k), '%.2f'), ' (', num2str(tdr.mean.resXRpN(j,k), '%i'), ')'];
+            end
+            mrRowTitles{j} = num2str(j);
+        end
+        print_latex_table(mrTable, mrColTitles, mrRowTitles, '', 'Analysis of multicollinearity and endogeneity.', '');
     end
      
     % switch on some warnings
