@@ -1,4 +1,4 @@
-function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, showResult, factorsName, periodn, alpha, vifMax )
+function [ tdr, tir, instant] = tdir(yImf, xImf, bootstrap, showResults, factorsName, periodn, alpha, vifMax )
     %TDIR Calculate time-dependent intrinsic regression (TDIR), bootstraping median of the coefficients estimations and instantaneous characteristics (using Hilbert transformation).
     %   
     %   TODO: docs
@@ -10,34 +10,35 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, showResult, f
     %   v0.3 2016.08.03: indicative significance function for coefficient avereging; JB, LBQ and ARCH tests for residuals
     %   v0.4 2016.09.10: HAC covariance estimation (Newey-West form)
     %   v0.5 2017.06.04: multicollinearity (VIF) and endogeneity analysis, AD and t tests for residuals, nMAE and nRMSE
+    %   v0.6 2017.06.09: one step-ahead forecast
     %
     
-    if (nargin < 4)
-        error('Dependent vector Y, matrix of independent value X and IMFs for both must be specified');
+    if (nargin < 2)
+        error('IMFs for dependent and independent values must be specified');
     end
     
     [nObs, nImfs] = size(yImf);
     nFactors = size(xImf, 2);
     
-    if (nargin < 5)
+    if (nargin < 3)
         bootstrap = 0;
     end
-    if (nargin < 6)
-        showResult = 0;
+    if (nargin < 4)
+        showResults = 0;
     end
-    if (nargin < 7)
+    if (nargin < 5)
         factorsName = cell(1,nFactors);
         for k = 1:nFactors
             factorsName{k} = num2str(k);
         end
     end
-    if (nargin < 8)
+    if (nargin < 6)
         periodn = 1;
     end
-    if (nargin < 9)
+    if (nargin < 7)
         alpha = 0.05;
     end
-    if (nargin < 10)
+    if (nargin < 8)
         vifMax = 10;
     end
     
@@ -63,6 +64,8 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, showResult, f
     % switch off some unnecessary warnings
     warning('off', 'stats:jbtest:PTooBig');
     warning('off', 'stats:jbtest:PTooSmall');
+    
+    y = sum(yImf,2);
     
     [instant.y.h, instant.y.ampl, instant.y.phase, instant.y.omega, instant.y.period] = hilbert_transform(yImf, 1);
     
@@ -145,9 +148,13 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, showResult, f
             
             x_win = nan(nx_win,nFactors);
             x_curr = nan(1,nFactors);
+            x_next = nan(1,nFactors);
             for k = 1:nFactors
                 x_win(1:nx_win,k) = xImf{1,k}(ts:te,j);
                 x_curr(1,k) = xImf{1,k}(t,j);
+                if(t ~= nObs)
+                    x_next(1,k) = xImf{1,k}(t+1,j);
+                end
             end
             
             y_win = yImf(ts:te,j);
@@ -189,22 +196,30 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, showResult, f
             tdr.VIF{j}(t,1:nFactors) = diag(inv(corrcoef(x_win)))';
             tdr.win(t,j) = nx_win;
             
-            % compute fitted values (for model that significantly differ from intercept model, otherwise use mean of independent value)
+            % compute fitted and one step-ahead forecasted values (for model that significantly differ from intercept model, otherwise use mean of independent value)
             if(round(tdr.Fp(t,j), 2) <= alpha)
                 if(intercept)
                     tdr.fitted(t,j) = tdr.b{j}(t,:)*[1; x_curr'];
+                    if(t ~= nObs)
+                        tdr.forecasted(t,j) = tdr.b{j}(t,:)*[1; x_next'];
+                    end
                 else
                     tdr.fitted(t,j) = tdr.b{j}(t,:)*x_curr';
                 end
             else
                 tdr.fitted(t,j) = mean(y_win);
+                if(t ~= nObs)
+                    tdr.forecasted(t,j) = yImf(t,j);
+                end
             end
             
-            if(intercept)
-                tdr.fitted2(t,j) = tdr.b{j}(t,:)*[1; x_curr'];
-            else
-                tdr.fitted2(t,j) = tdr.b{j}(t,:)*x_curr';
-            end
+%             if(t ~= nObs)
+%                 if(intercept)
+%                     tdr.forecasted(t,j) = tdr.b{j}(t,:)*[1; x_next'];
+%                 else
+%                     tdr.forecasted(t,j) = tdr.b{j}(t,:)*x_next';
+%                 end
+%             end
         end
         
         % set all non significant coefficients estimations to zero
@@ -262,8 +277,11 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, showResult, f
     tdr.original.fitted = sum(tdr.fitted, 2);
     [tdr.original.MAE, tdr.original.MAPE, tdr.original.MSE, tdr.original.RMSE, tdr.original.WAPE, tdr.original.nMAE, tdr.original.nRMSE] = mean_errors(y, tdr.original.fitted);
     
+    tdr.original.forecasted = sum(tdr.forecasted, 2);
+    [tdr.original.fMAE, tdr.original.fMAPE, tdr.original.fMSE, tdr.original.fRMSE, tdr.original.fWAPE, tdr.original.fnMAE, tdr.original.fnRMSE] = mean_errors(y(2:end,1), tdr.original.forecasted);
+    
     % show results
-    if(showResult>0)
+    if(showResults>0)
          fontName = 'Helvetica';
          fontSize = 16;
          
@@ -353,7 +371,7 @@ function [ tdr, tir, instant] = tdir( y, x, yImf, xImf, bootstrap, showResult, f
         dTable = cell(nImfs, 6);
         dRowTitles = cell(1,nImfs);
         for j = 1:nImfs
-            dTable{j,1} = num2str(tdr.mean.nMAE(j), '%.2f');
+            dTable{j,1} = num2str(round(tdr.mean.nMAE(j)), '%i');
             dTable{j,2} = num2str(round(100*tdr.mean.R2(j)), '%i');
             dTable{j,3} = [num2str(tdr.mean.Fp(j), '%.2f'), ' (', num2str(tdr.mean.FpN(j), '%i'), ')'];
             dTable{j,4} = [num2str(tdr.mean.resADp(j), '%.2f'), ' (', num2str(tdr.mean.resADpN(j), '%i'), ')'];
