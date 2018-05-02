@@ -28,7 +28,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     %
     %   References:
     %       Flandrin, P., Goncalves, P., Rilling, G., 2004. Detrending and denoising with empirical mode decomposition. Proceedings of Eusipco, Wien (Austria), 1581-1584.
-    %       Moghtader, A., Borgnat, P., Flandrin, P., 2011. Trend filtering: empirical mode decomposition versus l1 and Hodrick-Prescott. Advances in Adaptive Data Analysis 3 (1 and 2), 41–61.
+    %       Moghtader, A., Borgnat, P., Flandrin, P., 2011. Trend filtering: empirical mode decomposition versus l1 and Hodrick-Prescott. Advances in Adaptive Data Analysis 3 (1 and 2), 41-61.
     %       Colominas, M., Schlotthauer, G., Torres, M., Flandrin, P., 2012. Noise-assisted EMD methods in action. Advances in Adaptive Data Analysis 4 (4).
     %       Afanasyev, D., Fedorova, E., Popov, V., 2015. Fine structure of the price-demand relationship in the electricity market: multi-scale correlation analysis. Energy Economics 51, 215-226.
     %       Colominas, M., Schlotthauer, G., Torres, M., 2014. Improve complete ensemble EMD: A suitable tool for biomedical signal processing. Biomedical Signal Processing and Control, Vol. 14, 19-29
@@ -229,15 +229,15 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     
     % trend-cyclical component, filtered and detrended data
     filtered = filtered + residue;
-    %if(strcmp(method, 'emd') && trendidx == 0)
-    %    trend = residue;
-    %else
-    trend = sum(imf(:, trendidx:nImf), 2) + residue;
-    %end
+    if(strcmp(method, 'emd') && trendidx == 0)
+        trend = residue;
+    else
+        trend = sum(imf(:, trendidx:nImf), 2) + residue;
+    end
     ddata = data - trend;
     
     % align min values of the raw and detrended data
-    ddata = ddata + min(data) - min(ddata);
+    % ddata = ddata + min(data) - min(ddata);
     
     if (plots)
         fontSize = 16;
@@ -246,7 +246,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
     
         %figure('units', 'normalized', 'outerposition', [0 0 1 1]);
         figure;
-        for i=1:nImf;
+        for i=1:nImf
             subplot(nImf, 1, i,  'FontName', fontName, 'FontSize', fontSize, 'Box', 'on');
             plot(imf(:, i), 'LineWidth', lineWidth);
             
@@ -258,7 +258,7 @@ function [ ddata, trend, imf, period, trendidx, residue, filtered, filteredidx ]
             %ylim([1.01*min(imf(:, i)) 1.01*max(imf(:, i))]);
             xlim([1 nObs]);
             
-            if (i < nImf);
+            if (i < nImf)
                 set(gca, 'xticklabel', '');
             end
         end
