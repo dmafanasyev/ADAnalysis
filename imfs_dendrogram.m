@@ -1,6 +1,28 @@
 function [ h ] = imfs_dendrogram( imfSet, method, metric, threshold, titles, lables )
-%IMFS_DENDROGRAM Summary of this function goes here
-%   Detailed explanation goes here
+    %IMFS_DENDROGRAM Plot dendrogram of IMFs.
+    %   
+    %   Input:
+    %       imfSet - the 1 x K cell array of IMFs (K - the number of time-series),
+    %                each cell imfSet{k} is the N x I matrix,
+    %                N - the number of observations, I - the number of IMFs
+    %       method - the method to measure the distance between clusters,
+    %                see documentation for "linkage" Matlab function
+    %       metric - the method to measure the distance between objects in clusters,
+    %                see documentation for "pdist" Matlab function
+    %       threshold - the value of threshold for unique colors in the dendrogram plot,
+    %                   see documentation for "dendrogram" Matlab function, default is 0 (only one color)
+    %       titles - the 1 x K cell array of time-series titles that used as subplot titles, default is "Y_k"
+    %       lables - the 1 x K cell array of IMFs lables for each time-series from imfSet,
+    %                each cell lables{k} is the 1 x I cell array of lables, default is "i"
+    %
+    %   Output:
+    %       h - the graphical object handler of the IMFs dendrogram
+    %
+    %   Copyright (c) 2016-2018 by Dmitriy O. Afanasyev
+    %   Versions:
+    %       1.0  2016.01.05: initial version
+    %       1.1  2018.05.02: documentation and default titles added
+    %
 
     setSize = size(imfSet,2);
     
@@ -8,12 +30,18 @@ function [ h ] = imfs_dendrogram( imfSet, method, metric, threshold, titles, lab
         threshold = 0;
     end
     
+    if(nargin < 5)
+        for i = 1:setSize
+            titles{i} = ['Y_', num2str(i)];
+        end
+    end
+    
     if(nargin < 6)
         for i = 1:setSize
-        imfNum = size(imfSet{i},2);
-        for j = 1:imfNum
-            lables{i}{j} = num2str(j);
-        end
+            imfNum = size(imfSet{i},2);
+            for j = 1:imfNum
+                lables{i}{j} = num2str(j);
+            end
         end
     end
     
@@ -39,8 +67,9 @@ function [ h ] = imfs_dendrogram( imfSet, method, metric, threshold, titles, lab
         axColN = axRowN - 1;
     end
     
-    fontSize = 16;
+    fontSize = 8;
     fontName = 'Helvetica';
+    lineWidth = 0.5;
 
     h = figure;
     for i = 1:setSize
@@ -63,7 +92,7 @@ function [ h ] = imfs_dendrogram( imfSet, method, metric, threshold, titles, lab
 %         else
 %             hd = dendrogram(tree,  'Labels', lables, 'Reorder', optimalleaforder(tree, dist));
 %         end
-        set(hd, 'LineWidth', 1.5);
+        set(hd, 'LineWidth', lineWidth);
         if(threshold == 0)
             set(hd, 'Color', [0, 0.447, 0.741]);
         end
