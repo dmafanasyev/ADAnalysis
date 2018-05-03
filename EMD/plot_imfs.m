@@ -25,18 +25,19 @@ function [ h ] = plot_imfs( data, imfs, hasResidue )
     nRows = round(nImf/nCols)+1+1;
 
     fontName = 'Helvetica';
-    fontSize = 16;
-    lineWidth = 1.2;
+    fontSize = 8;
+    lineWidth = 0.5;
 
     %h = figure('units', 'normalized', 'outerposition', [0 0 1 1]);
     h = figure;
     
     % plot original signal
-    subplot(nRows, nCols, 1:4, 'FontName', fontName, 'FontSize', fontSize, 'Box', 'on');
+    subplot(nRows, nCols, 1:2*nCols, 'FontName', fontName, 'FontSize', fontSize, 'Box', 'on');
     hold on;
     plot(data, 'LineWidth', lineWidth);
     ylabel('x_t');
     xlim([1 nObs]);
+    %set(gca, 'xticklabel', '');
     hold off;
     
     % plot IMFs and residue (optionaly)
