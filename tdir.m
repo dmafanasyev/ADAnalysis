@@ -1,7 +1,7 @@
 function [ tdr, tir, instant] = tdir(yImf, xImf, bootstrap, showResults, factorsName, periodn, alpha, vifMax )
     %TDIR Estimate time-dependent intrinsic regression (TDIR).
     %   
-    %   For the multi-scale regression analysis purpose are calculated next:
+    %   For the multi-scale regression analysis purpose are calculated the next:
     %
     %   (1) time-independent regression (i.e. on full time period) of the explained variable IMFs on the corresponding regressors IMFs
     %   (2) time-dependent intrinsic regression (TDIR) of the explained variable IMFs on the corresponding regressors IMFs, mean (optionaly - bootstraped median) of the regressions parameters and instantaneous characteristics of the explained variable and regressors using Hilbert transformation
