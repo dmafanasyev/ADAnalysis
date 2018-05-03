@@ -16,9 +16,9 @@ function [ period, indmin, indmax, indzer, numzer ] = period_zero_cross( data )
     %       1.0 2014.04.12: initial version
     %       1.1 2015.08.04: added output params for indexes of min, max & zero
     %       1.2 2015.09.01: added output param 'numzer' and use it for period calculation
-    %                               in the case when time-series or its some cycles has no zero-crossings, calculate the "virtual" zero-crossings - one per two extremums without zero-crossing
+    %                       in the case when time-series or its some cycles has no zero-crossings,
+    %                       calculate the "virtual" zero-crossings - one per two extremums without zero-crossing
     %                               
-    %
     
         
     [indmin, indmax, indzer] = extr(data');
@@ -33,6 +33,6 @@ function [ period, indmin, indmax, indzer, numzer ] = period_zero_cross( data )
     end
     numzer = size(indzer,2) + numzerext;
     
-    period = 4 * (size(data,1) / (size(indmin, 2) + size(indmax, 2) + size(indzer,2) + numzer));
+    period = 4 * (size(data,1) / (size(indmin, 2) + size(indmax, 2) + numzer));
 end
 
