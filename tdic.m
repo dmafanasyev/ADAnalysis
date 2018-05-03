@@ -183,7 +183,7 @@ function [ tdc, tlc, tic, instant] = tdic( imfs1, imfs2, bootstrap, plots, print
     if(plots>0)
         %plot_corr_dynamic_int(tlc, nCols,  nObs, 'Time-dependent local correlations');
         plot_corr_dynamic_int(tdc, nCols,  nObs, 'Time-dependent intrinsic correlations');
-        plot_corr_mean_int( tic,tlc, tdc, nCols);
+        %plot_corr_mean_int( tic,tlc, tdc, nCols);
     end
     
     if(prints>0)
@@ -265,11 +265,11 @@ function [] = plot_corr_dynamic_int( corr_obj, nCols,  nObs, title_str )
     % Plot graph of time-dependent Pearson correlation
     figure;
     for i=1:nCols
-      subplot(nCols, 1, i, 'FontSize', 16);
+      subplot(nCols, 1, i, 'FontSize', 8);
       plot(corr_obj.corr(:, i));
       
       if (i == 1)
-          title(title_str);
+          %title(title_str);
       end
       
       xlim([1 nObs]);
@@ -286,29 +286,29 @@ function [] = plot_corr_mean_int( tic,tlc, tdc, nCols)
     x = 1:nCols;
 
     figure;
-    subplot(3,1,1, 'FontSize', 16);
+    subplot(3,1,1, 'FontSize', 8);
     hold on;
     grid on;
     box on;
-    errorbar(x, tic.corr, tic.corr-tic.lo, tic.up-tic.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
+    errorbar(x, tic.corr, tic.corr-tic.lo, tic.up-tic.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 0.5);
     xlim([0 nCols+1]);
     ylim([-1 1]);
     title('Time-independent correlations');
     hold off;
 
-    subplot(3,1,2, 'FontSize', 16);
+    subplot(3,1,2, 'FontSize', 8);
     hold on;
     grid on;
-    errorbar(x, tlc.mean.corr, tlc.mean.corr-tlc.mean.lo, tlc.mean.up-tlc.mean.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
+    errorbar(x, tlc.mean.corr, tlc.mean.corr-tlc.mean.lo, tlc.mean.up-tlc.mean.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 0.5);
     xlim([0 nCols+1]);
     ylim([-1 1]);
     title('Mean of the time-dependent local correlations');
     hold off;
 
-    subplot(3,1,3, 'FontSize', 16);
+    subplot(3,1,3, 'FontSize', 8);
     hold on;
     grid on;
-    errorbar(x, tdc.mean.corr, tdc.mean.corr-tdc.mean.lo, tdc.mean.up-tdc.mean.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 2);
+    errorbar(x, tdc.mean.corr, tdc.mean.corr-tdc.mean.lo, tdc.mean.up-tdc.mean.corr, 'LineStyle', 'none', 'Marker', 'x', 'LineWidth', 0.5);
     xlim([0 nCols+1]);
     ylim([-1 1]);
     title('Mean of the time-dependent intrinsic correlations');
@@ -342,7 +342,7 @@ function [] = print_result_int(tic, tlc, tdc, period_mean, nRows)
     tblTitle = 'Multi-scale correlation analysis';
     tblNotes = ['$\\overline{T}$ -- the mean period of IMF, $r$ -- coefficient of linear correlation (Pearson), ', ...
                     '$\\overline{r}$ -- the mean of time-dependent local correlation, $\\overline{\\rho}$ -- the mean of time-dependent intrinsic correlation. ', ...
-                    'Significance levels: \\textsuperscript{***} -- 1\\%, \\textsuperscript{**} -- 5\\%, \\textsuperscript{*} -- 10\\%.'];
+                    'Significance levels: \\textsuperscript{***} -- 1\\\%, \\textsuperscript{**} -- 5\\\%, \\textsuperscript{*} -- 10\\\%.'];
     
     print_latex_table(tbl, colTitles, {}, '', tblTitle, tblNotes);
 end
