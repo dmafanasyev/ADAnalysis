@@ -1,16 +1,88 @@
 function [ tdr, tir, instant] = tdir(yImf, xImf, bootstrap, showResults, factorsName, periodn, alpha, vifMax )
-    %TDIR Calculate time-dependent intrinsic regression (TDIR), bootstraping median of the coefficients estimations and instantaneous characteristics (using Hilbert transformation).
+    %TDIR Estimate time-dependent intrinsic regression (TDIR).
     %   
-    %   TODO: docs
+    %   For the multi-scale regression analysis purpose are calculated next:
     %
-    %   Copyright (c) 2014-2017 by Dmitriy O. Afanasyev
+    %   (1) time-independent regression (i.e. on full time period) of the explained variable IMFs on the corresponding regressors IMFs
+    %   (2) time-dependent intrinsic regression (TDIR) of the explained variable IMFs on the corresponding regressors IMFs, mean (optionaly - bootstraped median) of the regressions parameters and instantaneous characteristics of the explained variable and regressors using Hilbert transformation
+    %   
+    %   Names:
+    %       N - the number of observations
+    %       I - the number of IMFs
+    %       K - the number of regressors (without intercept)
+    %
+    %   Input:
+    %       yImf - N x I matrix of the explained variable IMFs
+    %       xImf - 1 x K cell array of regressors IMFs, each cell xImf{k} is the N x I matrix of k-th regressor IMFs
+    %       bootstrap - boolean flag (0 or 1) or bootstrap generation numbers (if bootstrap > 1) for bootstraping of the coefficient estimations median while avareging on all time period, default is 0 (simple mean)
+    %       showResults - boolean flag (0 or 1) for plotting and printing (in LaTeX table) of results, default is 0 (results are not printed)
+    %       factorsName - 1 x K cell array of regressors names, default is "k"
+    %       periodn - number of instantaneous periods for including into sliding window, default is 1
+    %       alpha - significance level for the all statistical tests, default is 0.05
+    %       vifMax - maximum value of VIF (Variance Inflation Factor) for multicollinearity test, default is 10
+    %
+    %   Output:
+    %       tdr - time-dependent intrinsic regression (TDIR):
+    %           tdr.b - 1 x I cell array of the coefficients, each cell tdr.b{i} is the N x (K+1) matrix of time-series columns with i-th IMF coefficients (including intercept)
+    %           tdr.bse - 1 x I cell array of the coefficient standard errors, each cell tdr.bse{i} is the N x (K+1) matrix of time-series columns with i-th IMF coefficient standard errros
+    %           tdr.bts - 1 x I cell array of the coefficient t-test statistics, each cell tdr.bts{i} is the N x (K+1) matrix of time-series columns with i-th IMF coefficient t-test statistics
+    %           tdr.bp - 1 x I cell array of the coefficient t-test p-value, each cell tdr.bp{i} is the N x (K+1) matrix of time-series columns with i-th IMF coefficient t-test p-value
+    %           tdr.blo - 1 x I cell array of the coefficient lower confidence boundaries, each cell tdr.blo{i} is the N x (K+1) matrix of time-series columns with i-th IMF coefficient lower confidence boundaries
+    %           tdr.bup - 1 x I cell array of the coefficient upper confidence boundaries, each cell tdr.bup{i} is the N x (K+1) matrix of time-series columns with i-th IMF coefficient upper confidence boundaries
+    %           tdr.R2 - N x I matrix of time-series columns with the regressions determination coefficients
+    %           tdr.nMAE - N x I matrix of time-series columns with the regressions normalized mean absoute errors (MAE), i.e. MAE divided on maximum range of actual explained variables (for sliding window time period)
+    %           tdr.nRMSE - N x I matrix of time-series columns with the regressions normalized root mean-squared errors (RMSE), i.e. RMSE divided on maximum range of actual explained variables (for sliding window time period)
+    %           tdr.F - N x I matrix of time-series columns with the regressions F-test statistics
+    %           tdr.Fp - N x I matrix of time-series columns with the regressions F-test p-value
+    %           tdr.resMean - N x I matrix of time-series columns with the regressions residuals mean values
+    %           tdr.resVar - N x I matrix of time-series columns with the regressions residuals variations
+    %           tdr.resAD - N x I matrix of time-series columns with the regressions residuals Anderson-Darling test statistics
+    %           tdr.resADp - N x I matrix of time-series columns with the regressions residuals Anderson-Darling test p-value
+    %           tdr.resTp - N x I matrix of time-series columns with the regressions residuals t-test p-value
+    %           tdr.resJB - N x I matrix of time-series columns with the regressions residuals Jarque-Bera test statistics
+    %           tdr.resJBp - N x I matrix of time-series columns with the regressions residuals Jarque-Bera test p-value
+    %           tdr.resXR - 1 x I cell array of the regressors to residuals correlations, each cell tdr.resXR{i} is the N x K matrix of time-series columns with i-th IMF regressors to residuals correlations
+    %           tdr.resXRp - 1 x I cell array of the regressors to residuals correlations p-value, each cell tdr.resXRp{i} is the N x K matrix of time-series columns with i-th IMF regressors to residuals correlations p-value
+    %           tdr.VIF - 1 x I cell array of the regressors VIFs, each cell tdr.VIF{i} is the N x K matrix of time-series columns with i-th IMF regressors VIFs
+    %           tdr.win - N x I matrix of time-series columns with the actual sliding window size
+    %           tdr.fitted - N x I matrix of time-series columns with the fitted values of IMFs (for non significant model we use simple mean of independent value, i.e. intercept)
+    %           
+    %           tdr.mean - averaged parameters of TDIR (based on simple mean or bootstraped median - see bootstrap input parameter):
+    %               -   the structure is almost the same as for tdr but for N x I, N x (K+1) and N x K matrices the N dimension replaced to 1 (because of averaging)
+    %               -   for Fp, ADp, Tp, JBp, XRp, VIF there are additional variable with N suffix - the percent of cases when corresponding test confirm the OLS assumptions for given level of significance (alpha)
+    %               -   win and fitted variables is absent in meaning
+    %           
+    %           tdr.original - the result of TDIR on original (not decomposed) data level:
+    %               tdr.original.fitted - N x 1 vector of fitted time-series (i.e. sum of tdr.fitted columns) for full time period
+    %               tdr.original.nMAE - normalized mean absoute errors (MAE) for full time period
+    %               tdr.original.nRMSE - normalized root mean-squared errors (RMSE) for full time period
+    %           
+    %       tir - time-independent regression (i.e. on full time period) of the explained variable IMFs on the corresponding regressors IMFs:
+    %           -   the structure is almost the same as variable tdr.mean
+    %           -   there are no additional variables with N suffix
+    %           -   there is blo and bup variables with lower and upper confidence boundaries (see )
+    %
+    %       instant - instantaneous characteristics:
+    %           instant.y - instantaneous characteristics of the explained variable IMFs (see method hilbert_transform):
+    %               instant.y.h - analytic signal
+    %               instant.y.ampl- instantaneous amplitude
+    %               instant.y.phase - instantaneous phase
+    %               instant.y.omega - instantaneous frequency
+    %               instant.y.period - instantaneous period
+    %           instant.x - 1 x K cell array of the instantaneous characteristics of the regressors IMFs, each cell instant.x{k} has same structure as instant.y
+    %	
+    %   References:
+    %       TODO
+    %
+    %   Copyright (c) 2014-2018 by Dmitriy O. Afanasyev
     %   Versions:
     %   v0.1 2014.11.25: initial version
     %   v0.2 2015.06.28: model summary on original data level, visualization and results print (LaTeX)
     %   v0.3 2016.08.03: indicative significance function for coefficient avereging; JB, LBQ and ARCH tests for residuals
     %   v0.4 2016.09.10: HAC covariance estimation (Newey-West form)
-    %   v0.5 2017.06.04: multicollinearity (VIF) and endogeneity analysis, AD and t tests for residuals, nMAE and nRMSE
+    %   v0.5 2017.06.04: multicollinearity (VIF) and endogeneity analysis, AD and t-tests for residuals, nMAE and nRMSE
     %   v0.6 2017.06.09: one step-ahead forecast
+    %   v0.7 2018.05.03: documentation added
     %
     
     if (nargin < 2)
@@ -107,14 +179,14 @@ function [ tdr, tir, instant] = tdir(yImf, xImf, bootstrap, showResults, factors
         [~, tir.resADp(1,j), tir.resAD(1,j)] = adtest(mdl.Residuals.Standardized, 'Distribution', makedist('normal','mu',0,'sigma',1), 'Asymptotic', (nObs > 120)); % H0: normal distribution with mean equal to 0 and variance 1
         [~, tir.resTp(1,j)] = ttest(mdl.Residuals.Standardized, 0); % H0: normal distribution with mean equal to 0 and unknown variance
         [~, tir.resJBp(1,j), tir.resJB(1,j)] = jbtest(mdl.Residuals.Standardized, alpha); % H0: normal distribution with unknown mean and variance
-        lbqLags = min(12, nObs-1);
-        [~, tir.resLBQp(1,j), tir.resLBQ(1,j)] = lbqtest(mdl.Residuals.Standardized, 'Lags', lbqLags, 'dof', max(1, lbqLags - nFactors));% H0: no jointly autocorrelation
-        if(intercept)
-            [tir.resDWp(1,j), tir.resDW(1,j)] = dwtest(mdl.Residuals.Standardized, [ones(nObs,1) x_j]);% H0: residuals are uncorrelated;
-        else
-            [tir.resDWp(1,j), tir.resDW(1,j)] = dwtest(mdl.Residuals.Standardized, x_j);% H0: residuals are uncorrelated;
-        end
-        [~, tir.ARCHp(1,j), tir.ARCH(1,j)] = archtest(mdl.Residuals.Standardized, 'Lags', 1);% H0: no conditional heteroscedasticity (ARCH effect)
+        %lbqLags = min(12, nObs-1);
+        %[~, tir.resLBQp(1,j), tir.resLBQ(1,j)] = lbqtest(mdl.Residuals.Standardized, 'Lags', lbqLags, 'dof', max(1, lbqLags - nFactors));% H0: no jointly autocorrelation
+        %if(intercept)
+        %    [tir.resDWp(1,j), tir.resDW(1,j)] = dwtest(mdl.Residuals.Standardized, [ones(nObs,1) x_j]);% H0: residuals are uncorrelated;
+        %else
+        %    [tir.resDWp(1,j), tir.resDW(1,j)] = dwtest(mdl.Residuals.Standardized, x_j);% H0: residuals are uncorrelated;
+        %end
+        %[~, tir.ARCHp(1,j), tir.ARCH(1,j)] = archtest(mdl.Residuals.Standardized, 'Lags', 1);% H0: no conditional heteroscedasticity (ARCH effect)
         [r_tmp, p_tmp] = corrcoef([mdl.Residuals.Raw x_j]);
         tir.resXR{j}(1,1:nFactors) = r_tmp(1,2:end);
         tir.resXRp{j}(1,1:nFactors) = p_tmp(1,2:end);
@@ -182,14 +254,14 @@ function [ tdr, tir, instant] = tdir(yImf, xImf, bootstrap, showResults, factors
             [~, tdr.resADp(t,j), tdr.resAD(t,j)] = adtest(mdl.Residuals.Standardized, 'Distribution', makedist('normal','mu',0,'sigma',1), 'Asymptotic', (nx_win > 120)); % H0: normal distribution with mean equal to 0 and variance 1
             [~, tdr.resTp(t,j)] = ttest(mdl.Residuals.Standardized, 0); % H0: normal distribution with mean equal to 0 and unknown variance
             [~, tdr.resJBp(t,j), tdr.resJB(t,j)] = jbtest(mdl.Residuals.Standardized, alpha); % H0: normal distribution with unknown mean and variance
-            lbqLags = min(12, nx_win-1);
-            [~, tdr.resLBQp(t,j), tdr.resLBQ(t,j)] = lbqtest(mdl.Residuals.Standardized, 'Lags', lbqLags, 'dof', max(1, lbqLags - nFactors));% H0: no jointly autocorrelation
-            if(intercept)
-                [tdr.resDWp(t,j), tdr.resDW(t,j)] = dwtest(mdl.Residuals.Standardized, [ones(nx_win,1) x_win]);% H0: residuals are uncorrelated;
-            else
-                [tdr.resDWp(t,j), tdr.resDW(t,j)] = dwtest(mdl.Residuals.Standardized, x_win);% H0: residuals are uncorrelated;
-            end
-            [~, tdr.resARCHp(t,j), tdr.resARCH(t,j)] = archtest(mdl.Residuals.Standardized, 'Lags', 1);% H0: no conditional heteroscedasticity (ARCH effect)
+            %lbqLags = min(12, nx_win-1);
+            %[~, tdr.resLBQp(t,j), tdr.resLBQ(t,j)] = lbqtest(mdl.Residuals.Standardized, 'Lags', lbqLags, 'dof', max(1, lbqLags - nFactors));% H0: no jointly autocorrelation
+            %if(intercept)
+            %    [tdr.resDWp(t,j), tdr.resDW(t,j)] = dwtest(mdl.Residuals.Standardized, [ones(nx_win,1) x_win]);% H0: residuals are uncorrelated;
+            %else
+            %    [tdr.resDWp(t,j), tdr.resDW(t,j)] = dwtest(mdl.Residuals.Standardized, x_win);% H0: residuals are uncorrelated;
+            %end
+            %[~, tdr.resARCHp(t,j), tdr.resARCH(t,j)] = archtest(mdl.Residuals.Standardized, 'Lags', 1);% H0: no conditional heteroscedasticity (ARCH effect)
             [r_tmp, p_tmp] = corrcoef([mdl.Residuals.Raw x_win]);
             tdr.resXR{j}(t,1:nFactors) = r_tmp(1,2:end);
             tdr.resXRp{j}(t,1:nFactors) = p_tmp(1,2:end);
@@ -283,7 +355,7 @@ function [ tdr, tir, instant] = tdir(yImf, xImf, bootstrap, showResults, factors
     % show results
     if(showResults>0)
          fontName = 'Helvetica';
-         fontSize = 16;
+         fontSize = 8;
          
          % plot the model parameters time-series (without intercept)
          axisInd = 0;
